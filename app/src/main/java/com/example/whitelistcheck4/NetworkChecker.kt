@@ -13,11 +13,12 @@ data class ServiceStatus(
 
 object NetworkChecker {
 
+    // Список для проверки: первые два – государственные/российские, остальные – зарубежные
     private val servicesToCheck = listOf(
-        "youtube" to "https://www.youtube.com",
-        "telegram" to "https://telegram.org",
-        "whatsapp" to "https://web.whatsapp.com",
-        "openvpn" to "https://openvpn.net"
+        "Госуслуги" to "https://gosuslugi.ru",
+        "Яндекс" to "https://yandex.ru",
+        "Google" to "https://google.com",
+        "Wikipedia" to "https://wikipedia.org"
     )
 
     suspend fun checkAll(): List<ServiceStatus> = withContext(Dispatchers.IO) {
@@ -43,7 +44,15 @@ object NetworkChecker {
         }
     }
 
+    // Новая логика: ограничение есть, если хотя бы один зарубежный сайт недоступен,
+    // но все государственные доступны.
     fun isRestricted(statuses: List<ServiceStatus>): Boolean {
-        return statuses.any { !it.isAccessible }
+        val russianSites = statuses.take(2) // первые два – гос
+        val foreignSites = statuses.drop(2) // остальные – зарубежные
+
+        val allRussianOk = russianSites.all { it.isAccessible }
+        val anyForeignBlocked = foreignSites.any { !it.isAccessible }
+
+        return allRussianOk && anyForeignBlocked
     }
 }
