@@ -29,7 +29,8 @@ class NotificationWorker(
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build()
 
-            val request = PeriodicWorkRequestBuilder<NotificationWorker>(3, TimeUnit.HOURS)
+            // Проверка каждые 15 минут (вместо 3 часов)
+            val request = PeriodicWorkRequestBuilder<NotificationWorker>(15, TimeUnit.MINUTES)
                 .setConstraints(constraints)
                 .build()
 
@@ -52,10 +53,20 @@ class NotificationWorker(
             val restricted = NetworkChecker.isRestricted(statuses)
 
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            val lastRestricted = prefs.getBoolean(KEY_LAST_RESTRICTED, true)
-            if (!restricted && lastRestricted) {
-                sendNotification()
+            val lastRestricted = prefs.getBoolean(KEY_LAST_RESTRICTED, true) // по умолчанию считаем, что были ограничения (чтобы при первом запуске не дублировать)
+
+            // Если статус изменился – отправляем уведомление
+            if (restricted != lastRestricted) {
+                if (restricted) {
+                    // Ограничения появились
+                    sendNotification("ограничения включены", "youtube, telegram, whatsapp и vpn могут быть недоступны.")
+                } else {
+                    // Ограничения сняты
+                    sendNotification("ограничения сняты", "youtube, telegram, whatsapp и vpn снова доступны.")
+                }
             }
+
+            // Сохраняем текущий статус
             prefs.edit().putBoolean(KEY_LAST_RESTRICTED, restricted).apply()
             Result.success()
         } catch (e: Exception) {
@@ -63,7 +74,7 @@ class NotificationWorker(
         }
     }
 
-    private fun sendNotification() {
+    private fun sendNotification(title: String, message: String) {
         createNotificationChannel()
 
         val intent = Intent(context, MainActivity::class.java).apply {
@@ -75,8 +86,8 @@ class NotificationWorker(
 
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("ограничения сняты")
-            .setContentText("youtube, telegram, whatsapp и vpn снова доступны!")
+            .setContentTitle(title)
+            .setContentText(message)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
@@ -100,7 +111,7 @@ class NotificationWorker(
             "оповещения о белых списках",
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
-            description = "уведомления при отключении ограничений"
+            description = "уведомления при изменении статуса ограничений"
         }
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.createNotificationChannel(channel)
