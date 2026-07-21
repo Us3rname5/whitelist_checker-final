@@ -65,7 +65,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Убираем белую полосу сверху
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
             window.statusBarColor = android.graphics.Color.BLACK
@@ -90,7 +89,6 @@ class MainActivity : ComponentActivity() {
             val scope = rememberCoroutineScope()
             val context = LocalContext.current
 
-            // Пульсация для круга (только во время проверки)
             val infiniteTransition = rememberInfiniteTransition(label = "pulse")
             val pulseScale by infiniteTransition.animateFloat(
                 initialValue = 1f,
@@ -116,24 +114,27 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            // ===== НОВЫЕ ЦВЕТА (тема) =====
+            // При ограничениях (true) – белый фон, чёрный текст
+            // При свободе (false) – чёрный фон, белый текст
             val backgroundColor by animateColorAsState(
                 targetValue = when (isRestricted) {
-                    true -> Color(0xFF1A1A1A)
-                    false -> Color(0xFFF5F5F5)
-                    null -> Color(0xFFEEEEEE)
+                    true -> Color(0xFFFFFFFF)  // белый
+                    false -> Color(0xFF1A1A1A) // чёрный
+                    null -> Color(0xFFEEEEEE)  // нейтральный
                 }, animationSpec = tween(400), label = "bg"
             )
             val contentColor by animateColorAsState(
                 targetValue = when (isRestricted) {
-                    true -> Color.White
-                    false -> Color.Black
+                    true -> Color.Black
+                    false -> Color.White
                     null -> Color.DarkGray
                 }, animationSpec = tween(400), label = "text"
             )
             val accentColor by animateColorAsState(
                 targetValue = when (isRestricted) {
-                    true -> Color(0xFFCF6679)
-                    false -> Color(0xFF4CAF50)
+                    true -> Color(0xFFE53935)  // красный – ограничения
+                    false -> Color(0xFF4CAF50) // зелёный – свобода
                     null -> Color.Gray
                 }, animationSpec = tween(400), label = "accent"
             )
@@ -184,8 +185,8 @@ class MainActivity : ComponentActivity() {
                                 .background(
                                     color = when {
                                         isChecking -> Color(0xFF666666)
-                                        isRestricted == true -> Color(0xFF333333)
-                                        else -> Color(0xFFE0E0E0)
+                                        isRestricted == true -> Color(0xFF333333) // тёмная на белом фоне
+                                        else -> Color(0xFFE0E0E0) // светлая на чёрном фоне
                                     },
                                     shape = CircleShape
                                 )
@@ -285,12 +286,12 @@ class MainActivity : ComponentActivity() {
                                     text = resultText,
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isRestricted == true) Color(0xFFCF6679) else Color(0xFF4CAF50),
+                                    color = if (isRestricted == true) Color(0xFFE53935) else Color(0xFF4CAF50),
                                     textAlign = TextAlign.Center,
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .background(
-                                            if (isRestricted == true) Color(0x33CF6679) else Color(0x334CAF50),
+                                            if (isRestricted == true) Color(0x33E53935) else Color(0x334CAF50),
                                             shape = RoundedCornerShape(8.dp)
                                         )
                                         .padding(16.dp)
@@ -308,7 +309,7 @@ class MainActivity : ComponentActivity() {
                                             Icon(
                                                 if (service.isAccessible) Icons.Filled.Check else Icons.Filled.Close,
                                                 contentDescription = null,
-                                                tint = if (service.isAccessible) Color(0xFF4CAF50) else Color(0xFFCF6679),
+                                                tint = if (service.isAccessible) Color(0xFF4CAF50) else Color(0xFFE53935),
                                                 modifier = Modifier.size(20.dp)
                                             )
                                             Spacer(modifier = Modifier.width(8.dp))
