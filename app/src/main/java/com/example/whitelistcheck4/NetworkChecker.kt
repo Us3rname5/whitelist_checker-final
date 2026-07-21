@@ -13,7 +13,6 @@ data class ServiceStatus(
 
 object NetworkChecker {
 
-    // Список для проверки: первые два – государственные/российские, остальные – зарубежные
     private val servicesToCheck = listOf(
         "Госуслуги" to "https://gosuslugi.ru",
         "Яндекс" to "https://yandex.ru",
@@ -28,31 +27,35 @@ object NetworkChecker {
         }
     }
 
-    private fun isReachable(urlString: String): Boolean {
-        return try {
-            val url = URL(urlString)
-            val connection = url.openConnection() as HttpURLConnection
-            connection.connectTimeout = 5000
-            connection.readTimeout = 5000
-            connection.requestMethod = "GET"
-            connection.instanceFollowRedirects = false
-            val code = connection.responseCode
-            connection.disconnect()
-            code == HttpURLConnection.HTTP_OK
-        } catch (e: Exception) {
-            false
+    private fun isReachable(urlString: String, retries: Int = 2): Boolean {
+        var attempt = 0
+        while (attempt <= retries) {
+            try {
+                val url = URL(urlString)
+                val connection = url.openConnection() as HttpURLConnection
+                connection.connectTimeout = 5000
+                connection.readTimeout = 5000
+                connection.requestMethod = "GET"
+                connection.instanceFollowRedirects = false
+                val code = connection.responseCode
+                connection.disconnect()
+                if (code == HttpURLConnection.HTTP_OK) return true
+            } catch (e: Exception) {
+                // игнорируем и пробуем снова
+            }
+            attempt++
+            if (attempt <= retries) Thread.sleep(500) // ждём 0.5 сек перед повторной попыткой
         }
+        return false
     }
 
-    // Новая логика: ограничение есть, если хотя бы один зарубежный сайт недоступен,
-    // но все государственные доступны.
+    // Новая логика: ограничение есть, если Госуслуги доступны, а хотя бы один зарубежный сайт недоступен.
+    // Яндекс не учитывается, чтобы избежать ложных срабатываний при его временной недоступности.
     fun isRestricted(statuses: List<ServiceStatus>): Boolean {
-        val russianSites = statuses.take(2) // первые два – гос
-        val foreignSites = statuses.drop(2) // остальные – зарубежные
-
+        val russianSites = statuses.take(1) // ТОЛЬКО Госуслуги
+        val foreignSites = statuses.drop(2) // Google, Wikipedia (пропускаем Яндекс)
         val allRussianOk = russianSites.all { it.isAccessible }
         val anyForeignBlocked = foreignSites.any { !it.isAccessible }
-
         return allRussianOk && anyForeignBlocked
     }
 }
