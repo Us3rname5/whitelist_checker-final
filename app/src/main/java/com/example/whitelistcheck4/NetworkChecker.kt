@@ -13,10 +13,11 @@ data class ServiceStatus(
 
 object NetworkChecker {
 
+    // Используем специальные URL для надёжной проверки
     private val servicesToCheck = listOf(
         "Госуслуги" to "https://gosuslugi.ru",
         "Яндекс" to "https://yandex.ru",
-        "Google" to "https://google.com",
+        "Google" to "https://www.google.com/generate_204",  // ← специальный URL для проверки
         "Wikipedia" to "https://wikipedia.org"
     )
 
@@ -36,23 +37,37 @@ object NetworkChecker {
                 connection.connectTimeout = 5000
                 connection.readTimeout = 5000
                 connection.requestMethod = "GET"
-                connection.instanceFollowRedirects = false
+                // Добавляем реалистичный User-Agent, чтобы не выглядеть как бот
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                // Разрешаем автоматически следовать редиректам (коды 3xx)
+                connection.instanceFollowRedirects = true
                 val code = connection.responseCode
                 connection.disconnect()
-                if (code == HttpURLConnection.HTTP_OK) return true
+
+                // Считаем успехом:
+                // - 200 (OK)
+                // - 204 (No Content) – для Google generate_204
+                // - 301, 302, 303, 307, 308 (редиректы) – если они обработаны, то мы получим конечный код
+                // Но если instanceFollowRedirects = true, то после редиректа мы получим финальный код (200 или 204)
+                // Поэтому проверяем: code in 200..299 или code == 204
+                return when (code) {
+                    in 200..299 -> true
+                    204 -> true
+                    else -> false
+                }
             } catch (e: Exception) {
-                // игнорируем и пробуем снова
+                // Логируем ошибку для отладки (можно убрать)
+                e.printStackTrace()
             }
             attempt++
-            if (attempt <= retries) Thread.sleep(500) // ждём 0.5 сек перед повторной попыткой
+            if (attempt <= retries) Thread.sleep(500)
         }
         return false
     }
 
-    // Новая логика: ограничение есть, если Госуслуги доступны, а хотя бы один зарубежный сайт недоступен.
-    // Яндекс не учитывается, чтобы избежать ложных срабатываний при его временной недоступности.
+    // Логика ограничений: если Госуслуги доступны, а хотя бы один зарубежный сайт (Google или Wikipedia) недоступен
     fun isRestricted(statuses: List<ServiceStatus>): Boolean {
-        val russianSites = statuses.take(1) // ТОЛЬКО Госуслуги
+        val russianSites = statuses.take(1) // только Госуслуги
         val foreignSites = statuses.drop(2) // Google, Wikipedia (пропускаем Яндекс)
         val allRussianOk = russianSites.all { it.isAccessible }
         val anyForeignBlocked = foreignSites.any { !it.isAccessible }
