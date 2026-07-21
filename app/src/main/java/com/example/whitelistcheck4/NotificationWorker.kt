@@ -29,7 +29,7 @@ class NotificationWorker(
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build()
 
-            // Проверка каждые 15 минут (вместо 3 часов)
+            // Проверка каждые 15 минут
             val request = PeriodicWorkRequestBuilder<NotificationWorker>(15, TimeUnit.MINUTES)
                 .setConstraints(constraints)
                 .build()
@@ -53,20 +53,16 @@ class NotificationWorker(
             val restricted = NetworkChecker.isRestricted(statuses)
 
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            val lastRestricted = prefs.getBoolean(KEY_LAST_RESTRICTED, true) // по умолчанию считаем, что были ограничения (чтобы при первом запуске не дублировать)
+            val lastRestricted = prefs.getBoolean(KEY_LAST_RESTRICTED, true)
 
-            // Если статус изменился – отправляем уведомление
             if (restricted != lastRestricted) {
                 if (restricted) {
-                    // Ограничения появились
                     sendNotification("ограничения включены", "youtube, telegram, whatsapp и vpn могут быть недоступны.")
                 } else {
-                    // Ограничения сняты
                     sendNotification("ограничения сняты", "youtube, telegram, whatsapp и vpn снова доступны.")
                 }
             }
 
-            // Сохраняем текущий статус
             prefs.edit().putBoolean(KEY_LAST_RESTRICTED, restricted).apply()
             Result.success()
         } catch (e: Exception) {
