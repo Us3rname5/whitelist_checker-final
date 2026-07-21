@@ -1,16 +1,11 @@
 <resources>
-    <!-- Базовый стиль приложения. Наследуем от MaterialComponents, чтобы всё работало с Compose -->
-    <style name="Theme.WhiteListCheck" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <!-- Основные цвета -->
-        <item name="colorPrimary">#000000</item>
-        <item name="colorPrimaryDark">#000000</item>
-        <item name="colorAccent">#888888</item>
+    <style name="Theme.WhiteListCheck" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:colorPrimary">#000000</item>
+        <item name="android:colorPrimaryDark">#000000</item>
+        <item name="android:colorAccent">#888888</item>
         <item name="android:textColorPrimary">#000000</item>
         <item name="android:windowBackground">#FFFFFF</item>
-
-        <!-- СТАТУС-БАР: делаем его чёрным, чтобы не было белой полосы -->
         <item name="android:statusBarColor">#000000</item>
-        <!-- Для API 21+ также можно задать цвет навигационной панели -->
         <item name="android:navigationBarColor">#000000</item>
     </style>
 </resources>
