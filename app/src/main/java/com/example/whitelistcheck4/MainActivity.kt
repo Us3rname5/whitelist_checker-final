@@ -24,7 +24,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -108,9 +107,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Функция экспорта (вызывается из MainScreen)
     fun exportHistory(context: Context, repo: HistoryRepository) {
-        // Запускаем корутину
         kotlinx.coroutines.GlobalScope.launch {
             val list = repo.getHistory()
             if (list.isEmpty()) {
@@ -143,9 +140,8 @@ class MainActivity : ComponentActivity() {
 }
 
 // =============================================
-// ВСПОМОГАТЕЛЬНЫЕ @Composable ФУНКЦИИ
+// 1. Экран "Нет SIM"
 // =============================================
-
 @Composable
 fun NoSimScreen() {
     val context = LocalContext.current
@@ -171,6 +167,9 @@ fun NoSimScreen() {
     }
 }
 
+// =============================================
+// 2. Информационный экран
+// =============================================
 @Composable
 fun InfoScreen(title: String, message: String) {
     Column(
@@ -183,6 +182,9 @@ fun InfoScreen(title: String, message: String) {
     }
 }
 
+// =============================================
+// 3. ГЛАВНЫЙ ЭКРАН (с кнопкой, 4 палочками, анимациями)
+// =============================================
 @Composable
 fun MainScreen() {
     val permissions = rememberMultiplePermissionsState(
@@ -219,6 +221,7 @@ fun MainScreen() {
         logs = (logs + message).takeLast(15)
     }
 
+    // Анимации
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 1f,
@@ -229,6 +232,22 @@ fun MainScreen() {
         ), label = "pulseScale"
     )
 
+    // Анимация для палочек (каждая со своей задержкой)
+    val barHeights = remember { mutableStateListOf(0.3f, 0.5f, 0.7f, 0.9f) }
+    if (isChecking) {
+        // Анимируем высоту палочек с разной задержкой
+        LaunchedEffect(Unit) {
+            while (isChecking) {
+                barHeights[0] = 0.3f + 0.7f * (1 + kotlin.math.sin(System.currentTimeMillis() / 300f)) / 2
+                barHeights[1] = 0.5f + 0.5f * (1 + kotlin.math.sin(System.currentTimeMillis() / 400f + 1f)) / 2
+                barHeights[2] = 0.7f + 0.3f * (1 + kotlin.math.sin(System.currentTimeMillis() / 500f + 2f)) / 2
+                barHeights[3] = 0.9f + 0.1f * (1 + kotlin.math.sin(System.currentTimeMillis() / 600f + 3f)) / 2
+                delay(50)
+            }
+        }
+    }
+
+    // Цветовая схема
     val currentHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
     val isNight = currentHour in 22..23 || currentHour in 0..6
 
@@ -297,7 +316,7 @@ fun MainScreen() {
                     )
                     Spacer(modifier = Modifier.height(32.dp))
 
-                    // ---- КНОПКА ----
+                    // -------- КРУГЛАЯ КНОПКА С 4 АНИМИРОВАННЫМИ ПАЛОЧКАМИ --------
                     Box(
                         modifier = Modifier
                             .size(160.dp)
@@ -382,31 +401,48 @@ fun MainScreen() {
                                         e.printStackTrace()
                                     } finally {
                                         isChecking = false
+                                        // сбрасываем палочки на статичные значения
+                                        barHeights[0] = 0.3f
+                                        barHeights[1] = 0.5f
+                                        barHeights[2] = 0.7f
+                                        barHeights[3] = 0.9f
                                     }
                                 }
                             },
                         contentAlignment = Alignment.Center
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(
-                                imageVector = Icons.Outlined.Wifi,
-                                contentDescription = null,
-                                tint = if (isRestricted == true) Color.White else Color.Black,
-                                modifier = Modifier.size(48.dp)
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = if (isChecking) "..." else "проверить",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isRestricted == true) Color.White else Color.Black
-                            )
+                        // 4 палочки (без Canvas, через Column с Box)
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.Bottom,
+                            modifier = Modifier.height(48.dp)
+                        ) {
+                            repeat(4) { index ->
+                                val heightFraction = barHeights.getOrElse(index) { 0.5f }
+                                Box(
+                                    modifier = Modifier
+                                        .width(10.dp)
+                                        .height((heightFraction * 48).dp)
+                                        .background(
+                                            color = if (isRestricted == true) Color.White else Color.Black,
+                                            shape = RoundedCornerShape(2.dp)
+                                        )
+                                        .animateContentSize()
+                                )
+                            }
                         }
+                        Text(
+                            text = if (isChecking) "..." else "проверить",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isRestricted == true) Color.White else Color.Black,
+                            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp)
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    // РЕЗУЛЬТАТЫ
+                    // -------- РЕЗУЛЬТАТЫ (с анимацией появления) --------
                     AnimatedVisibility(
                         visible = resultText.isNotEmpty(),
                         enter = expandVertically(animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)),
@@ -453,7 +489,7 @@ fun MainScreen() {
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // ЛОГИ
+                    // -------- ЛОГИ --------
                     if (logs.isNotEmpty()) {
                         Text("логи:".lowercase(), fontSize = 12.sp, color = contentColor.copy(alpha = 0.6f))
                         logs.forEach { log ->
@@ -467,7 +503,7 @@ fun MainScreen() {
                     }
                 }
 
-                // Иконки по периметру
+                // -------- ИКОНКИ ПО ПЕРИМЕТРУ --------
                 Icon(
                     imageVector = Icons.Default.History,
                     contentDescription = "История",
@@ -528,7 +564,7 @@ fun MainScreen() {
         }
     }
 
-    // Диалоги
+    // -------- ДИАЛОГИ --------
     if (showHistoryDialog) {
         HistoryDialog(
             historyList = historyList,
@@ -572,6 +608,7 @@ fun MainScreen() {
     }
 }
 
+// -------- ДИАЛОГ ИСТОРИИ --------
 @Composable
 fun HistoryDialog(historyList: List<HistoryEntity>, onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss) {
@@ -611,6 +648,7 @@ fun HistoryDialog(historyList: List<HistoryEntity>, onDismiss: () -> Unit) {
     }
 }
 
+// -------- ДИАЛОГ НАСТРОЕК --------
 @Composable
 fun SettingsDialog(
     notificationEnabled: Boolean,
@@ -668,6 +706,7 @@ fun SettingsDialog(
     }
 }
 
+// -------- ДИАЛОГ УПРАВЛЕНИЯ САЙТАМИ --------
 @Composable
 fun SitesDialog(
     sites: List<Pair<String, String>>,
