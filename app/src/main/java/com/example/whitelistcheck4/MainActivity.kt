@@ -1,4 +1,3 @@
-// === MainActivity.kt ===
 package com.example.whitelistcheck4
 
 import android.Manifest
@@ -265,6 +264,7 @@ class MainActivity : ComponentActivity() {
                             )
                             Spacer(modifier = Modifier.height(32.dp))
 
+                            // ---- КРУГЛАЯ КНОПКА ----
                             Box(
                                 modifier = Modifier
                                     .size(160.dp)
@@ -355,7 +355,8 @@ class MainActivity : ComponentActivity() {
                                     },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Canvas(modifier = Modifier.size(80.dp)) {
+                                // Рисуем 4 палочки
+                                androidx.compose.foundation.Canvas(modifier = Modifier.size(80.dp)) {
                                     val barWidth = size.width / 10f
                                     val barGap = size.width / 20f
                                     val maxHeight = size.height * 0.8f
@@ -396,6 +397,7 @@ class MainActivity : ComponentActivity() {
 
                             Spacer(modifier = Modifier.height(24.dp))
 
+                            // --- РЕЗУЛЬТАТЫ ---
                             AnimatedVisibility(
                                 visible = resultText.isNotEmpty(),
                                 enter = expandVertically(animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)),
@@ -442,6 +444,7 @@ class MainActivity : ComponentActivity() {
 
                             Spacer(modifier = Modifier.height(16.dp))
 
+                            // --- ЛОГИ ---
                             if (logs.isNotEmpty()) {
                                 Text("логи:".lowercase(), fontSize = 12.sp, color = contentColor.copy(alpha = 0.6f))
                                 logs.forEach { log ->
@@ -455,7 +458,7 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        // Иконки по периметру
+                        // --- ИКОНКИ ПО ПЕРИМЕТРУ ---
                         Icon(
                             imageVector = Icons.Default.History,
                             contentDescription = "История",
@@ -517,7 +520,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            // Диалог истории
+            // --- Диалог истории ---
             if (showHistoryDialog) {
                 Dialog(onDismissRequest = { showHistoryDialog = false }) {
                     Card(
@@ -556,7 +559,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            // Диалог настроек
+            // --- Диалог настроек ---
             if (showSettingsDialog) {
                 Dialog(onDismissRequest = { showSettingsDialog = false }) {
                     Card(
@@ -621,7 +624,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            // Диалог управления сайтами
+            // --- Диалог управления сайтами ---
             if (showSitesDialog) {
                 Dialog(onDismissRequest = { showSitesDialog = false }) {
                     Card(
