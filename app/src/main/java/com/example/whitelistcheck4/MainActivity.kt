@@ -115,6 +115,40 @@ class MainActivity : ComponentActivity() {
         val connectionStatus = checkConnectionStatus(this)
 
         setContent {
+            // Проверяем статус соединения и показываем соответствующий экран
+            when (connectionStatus) {
+                ConnectionStatus.NO_SIM -> {
+                    NoSimScreen()
+                    return@setContent
+                }
+                ConnectionStatus.NO_INTERNET -> {
+                    Column(
+                        modifier = Modifier.fillMaxSize().padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text("проверка недоступна", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Text("нет интернет-соединения", fontSize = 16.sp)
+                    }
+                    return@setContent
+                }
+                ConnectionStatus.WIFI_AND_MOBILE -> {
+                    Column(
+                        modifier = Modifier.fillMaxSize().padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text("проверка недоступна", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Text("отключите Wi-Fi", fontSize = 16.sp)
+                    }
+                    return@setContent
+                }
+                else -> {
+                    // MOBILE_ONLY — продолжаем с основным UI
+                }
+            }
+
+            // --- ОСНОВНОЙ UI (только при MOBILE_ONLY) ---
             val permissions = rememberMultiplePermissionsState(
                 permissions = listOf(
                     Manifest.permission.ACCESS_FINE_LOCATION,
@@ -160,42 +194,6 @@ class MainActivity : ComponentActivity() {
                     repeatMode = RepeatMode.Reverse
                 ), label = "pulseScale"
             )
-
-            val canCheck = when (connectionStatus) {
-                ConnectionStatus.MOBILE_ONLY -> true
-                ConnectionStatus.WIFI_AND_MOBILE -> {
-                    Toast.makeText(context, "отключите Wi-Fi для проверки", Toast.LENGTH_SHORT).show()
-                    false
-                }
-                ConnectionStatus.NO_INTERNET -> {
-                    Toast.makeText(context, "похоже, у вас подключение отсутствует", Toast.LENGTH_SHORT).show()
-                    false
-                }
-                ConnectionStatus.NO_SIM -> {
-                    // Отображаем экран "Нет SIM" внутри @Composable
-                    NoSimScreen(context)
-                    return@setContent
-                }
-            }
-
-            if (!canCheck && connectionStatus != ConnectionStatus.NO_SIM) {
-                Column(
-                    modifier = Modifier.fillMaxSize().padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Text("проверка недоступна", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                    Text(
-                        when (connectionStatus) {
-                            ConnectionStatus.NO_INTERNET -> "нет интернет-соединения"
-                            ConnectionStatus.WIFI_AND_MOBILE -> "отключите Wi-Fi"
-                            else -> ""
-                        },
-                        fontSize = 16.sp
-                    )
-                }
-                return@setContent
-            }
 
             val currentHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
             val isNight = currentHour in 22..23 || currentHour in 0..6
@@ -278,7 +276,7 @@ class MainActivity : ComponentActivity() {
                                             else -> Color(0xFFE0E0E0)
                                         }
                                     )
-                                    .clickable(enabled = !isChecking && canCheck) {
+                                    .clickable(enabled = !isChecking) {
                                         isChecking = true
                                         scope.launch {
                                             try {
@@ -372,14 +370,14 @@ class MainActivity : ComponentActivity() {
                                         listOf(maxHeight * 0.3f, maxHeight * 0.5f, maxHeight * 0.7f, maxHeight * 0.9f)
                                     }
 
-                                    val color = if (isRestricted == true) Color.White else Color.Black
+                                    val barColor = if (isRestricted == true) Color.White else Color.Black
 
                                     heights.forEachIndexed { index, height ->
                                         val left = index * (barWidth + barGap) + barGap
                                         val bottom = size.height * 0.9f
                                         val top = bottom - height
                                         drawRect(
-                                            color = color,
+                                            color = barColor,
                                             topLeft = Offset(left, top),
                                             size = Size(barWidth, height),
                                             cornerRadius = CornerRadius(4f, 4f)
@@ -744,13 +742,14 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    fun NoSimScreen(context: Context) {
+    fun NoSimScreen() {
+        val context = LocalContext.current
         Box(modifier = Modifier.fillMaxSize().background(Color(0xFF1A1A1A)), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
                 Text("нет sim-карты".lowercase(), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    "для работы приложения необходима мобильная сеть.\nвы можете приобрести sim-карту в любом салоне связи:\n• мтс\n• мегафон\n• теле2 (t2) и других.".lowercase(),
+                    "для работы приложения необходима мобильная сеть.\nвы можете приобрести sim-карту в любом салоне связи:\n• мтс\n• мегафон\n• теле2 и других.".lowercase(),
                     fontSize = 16.sp,
                     color = Color.White.copy(alpha = 0.8f)
                 )
