@@ -1,10 +1,8 @@
-// === WidgetProvider.kt ===
 package com.example.whitelistcheck4
 
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.Context
-import android.content.Intent
 import android.widget.RemoteViews
 import java.text.SimpleDateFormat
 import java.util.*
@@ -39,7 +37,6 @@ class WidgetProvider : AppWidgetProvider() {
     }
 
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
-        // При первом обновлении показываем заглушку
         for (appWidgetId in appWidgetIds) {
             val views = RemoteViews(context.packageName, R.layout.widget_layout)
             views.setTextViewText(R.id.widget_status, "⏳ Ожидание")
