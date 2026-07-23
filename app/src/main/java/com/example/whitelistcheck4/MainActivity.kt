@@ -30,9 +30,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -115,7 +112,6 @@ class MainActivity : ComponentActivity() {
         val connectionStatus = checkConnectionStatus(this)
 
         setContent {
-            // Определяем контент в зависимости от статуса соединения
             when (connectionStatus) {
                 ConnectionStatus.NO_SIM -> NoSimScreen()
                 ConnectionStatus.NO_INTERNET -> InfoScreen("проверка недоступна", "нет интернет-соединения")
@@ -125,7 +121,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // --- ЭКРАН "НЕТ SIM" ---
+    // ----------------------------------------------
+    // ЭКРАН "НЕТ SIM"
+    // ----------------------------------------------
     @Composable
     fun NoSimScreen() {
         val context = LocalContext.current
@@ -151,7 +149,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // --- ИНФОРМАЦИОННЫЙ ЭКРАН ---
+    // ----------------------------------------------
+    // ИНФОРМАЦИОННЫЙ ЭКРАН
+    // ----------------------------------------------
     @Composable
     fun InfoScreen(title: String, message: String) {
         Column(
@@ -164,7 +164,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // --- ГЛАВНЫЙ ЭКРАН ---
+    // ----------------------------------------------
+    // ГЛАВНЫЙ ЭКРАН
+    // ----------------------------------------------
     @Composable
     fun MainScreen() {
         val permissions = rememberMultiplePermissionsState(
@@ -187,8 +189,6 @@ class MainActivity : ComponentActivity() {
         var historyList by remember { mutableStateOf<List<HistoryEntity>>(emptyList()) }
         var intervalMinutes by remember { mutableStateOf(15) }
         var customSites by remember { mutableStateOf(NetworkChecker.getSites(LocalContext.current)) }
-        var newSiteName by remember { mutableStateOf("") }
-        var newSiteUrl by remember { mutableStateOf("") }
 
         val scope = rememberCoroutineScope()
         val context = LocalContext.current
@@ -203,6 +203,7 @@ class MainActivity : ComponentActivity() {
             logs = (logs + message).takeLast(15)
         }
 
+        // Пульсация
         val infiniteTransition = rememberInfiniteTransition(label = "pulse")
         val pulseScale by infiniteTransition.animateFloat(
             initialValue = 1f,
@@ -223,21 +224,21 @@ class MainActivity : ComponentActivity() {
                 isRestricted == false && !isNight -> Color(0xFF1A1A1A)
                 isRestricted == false && isNight -> Color(0xFFEEEEEE)
                 else -> Color(0xFFEEEEEE)
-            }, animationSpec = tween(400), label = "bg"
+            }, animationSpec = tween(400)
         )
         val contentColor by animateColorAsState(
             targetValue = when {
                 isRestricted == true -> Color.Black
                 isRestricted == false -> Color.White
                 else -> Color.DarkGray
-            }, animationSpec = tween(400), label = "text"
+            }, animationSpec = tween(400)
         )
         val accentColor by animateColorAsState(
             targetValue = when {
                 isRestricted == true -> Color(0xFFE53935)
                 isRestricted == false -> Color(0xFF4CAF50)
                 else -> Color.Gray
-            }, animationSpec = tween(400), label = "accent"
+            }, animationSpec = tween(400)
         )
 
         MaterialTheme(
@@ -258,6 +259,7 @@ class MainActivity : ComponentActivity() {
         ) {
             Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                 Box(modifier = Modifier.fillMaxSize()) {
+                    // Основной контент
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -281,7 +283,7 @@ class MainActivity : ComponentActivity() {
                         )
                         Spacer(modifier = Modifier.height(32.dp))
 
-                        // КРУГЛАЯ КНОПКА
+                        // ---- КРУГЛАЯ КНОПКА (упрощённая, с иконкой Wi-Fi) ----
                         Box(
                             modifier = Modifier
                                 .size(160.dp)
@@ -372,44 +374,22 @@ class MainActivity : ComponentActivity() {
                                 },
                             contentAlignment = Alignment.Center
                         ) {
-                            // Рисуем 4 палочки с помощью Canvas
-                            androidx.compose.foundation.Canvas(modifier = Modifier.size(80.dp)) {
-                                val barWidth = size.width / 10f
-                                val barGap = size.width / 20f
-                                val maxHeight = size.height * 0.8f
-                                val heights = if (isChecking) {
-                                    listOf(
-                                        maxHeight * 0.3f + (maxHeight * 0.7f * (1 + kotlin.math.sin(System.currentTimeMillis() / 300f)) / 2),
-                                        maxHeight * 0.5f + (maxHeight * 0.5f * (1 + kotlin.math.sin(System.currentTimeMillis() / 400f + 1f)) / 2),
-                                        maxHeight * 0.7f + (maxHeight * 0.3f * (1 + kotlin.math.sin(System.currentTimeMillis() / 500f + 2f)) / 2),
-                                        maxHeight * 0.9f + (maxHeight * 0.1f * (1 + kotlin.math.sin(System.currentTimeMillis() / 600f + 3f)) / 2)
-                                    )
-                                } else {
-                                    listOf(maxHeight * 0.3f, maxHeight * 0.5f, maxHeight * 0.7f, maxHeight * 0.9f)
-                                }
-
-                                val barColor = if (isRestricted == true) Color.White else Color.Black
-
-                                heights.forEachIndexed { index, height ->
-                                    val left = index * (barWidth + barGap) + barGap
-                                    val bottom = size.height * 0.9f
-                                    val top = bottom - height
-                                    drawRect(
-                                        color = barColor,
-                                        topLeft = Offset(left, top),
-                                        size = Size(barWidth, height),
-                                        cornerRadius = CornerRadius(4f, 4f)
-                                    )
-                                }
+                            // Вместо кастомных палочек используем иконку Wi-Fi
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Wifi,
+                                    contentDescription = null,
+                                    tint = if (isRestricted == true) Color.White else Color.Black,
+                                    modifier = Modifier.size(48.dp)
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = if (isChecking) "..." else "проверить",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isRestricted == true) Color.White else Color.Black
+                                )
                             }
-
-                            Text(
-                                text = if (isChecking) "..." else "проверить",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isRestricted == true) Color.White else Color.Black,
-                                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp)
-                            )
                         }
 
                         Spacer(modifier = Modifier.height(24.dp))
@@ -537,9 +517,12 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // Диалоги
+        // Диалоги (вынесены в отдельные функции)
         if (showHistoryDialog) {
-            HistoryDialog(historyList) { showHistoryDialog = false }
+            HistoryDialog(
+                historyList = historyList,
+                onDismiss = { showHistoryDialog = false }
+            )
         }
         if (showSettingsDialog) {
             SettingsDialog(
@@ -578,7 +561,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // --- ДИАЛОГ ИСТОРИИ ---
+    // ----------------------------------------------
+    // ДИАЛОГ ИСТОРИИ
+    // ----------------------------------------------
     @Composable
     fun HistoryDialog(historyList: List<HistoryEntity>, onDismiss: () -> Unit) {
         Dialog(onDismissRequest = onDismiss) {
@@ -618,7 +603,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // --- ДИАЛОГ НАСТРОЕК ---
+    // ----------------------------------------------
+    // ДИАЛОГ НАСТРОЕК
+    // ----------------------------------------------
     @Composable
     fun SettingsDialog(
         notificationEnabled: Boolean,
@@ -676,7 +663,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // --- ДИАЛОГ УПРАВЛЕНИЯ САЙТАМИ ---
+    // ----------------------------------------------
+    // ДИАЛОГ УПРАВЛЕНИЯ САЙТАМИ
+    // ----------------------------------------------
     @Composable
     fun SitesDialog(
         sites: List<Pair<String, String>>,
@@ -686,6 +675,7 @@ class MainActivity : ComponentActivity() {
         var localSites by remember { mutableStateOf(sites) }
         var newSiteName by remember { mutableStateOf("") }
         var newSiteUrl by remember { mutableStateOf("") }
+        val context = LocalContext.current
 
         Dialog(onDismissRequest = onDismiss) {
             Card(
@@ -715,7 +705,7 @@ class MainActivity : ComponentActivity() {
                                         .clickable {
                                             localSites = localSites.filter { it != site }
                                             onSitesChange(localSites)
-                                            Toast.makeText(LocalContext.current, "Сайт удалён", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, "Сайт удалён", Toast.LENGTH_SHORT).show()
                                         }
                                 )
                             }
@@ -747,14 +737,14 @@ class MainActivity : ComponentActivity() {
                                 if (localSites.none { it.first == newSite.first || it.second == newSite.second }) {
                                     localSites = localSites + newSite
                                     onSitesChange(localSites)
-                                    Toast.makeText(LocalContext.current, "Сайт добавлен", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Сайт добавлен", Toast.LENGTH_SHORT).show()
                                     newSiteName = ""
                                     newSiteUrl = ""
                                 } else {
-                                    Toast.makeText(LocalContext.current, "Такой сайт уже есть", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Такой сайт уже есть", Toast.LENGTH_SHORT).show()
                                 }
                             } else {
-                                Toast.makeText(LocalContext.current, "Заполните оба поля", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Заполните оба поля", Toast.LENGTH_SHORT).show()
                             }
                         },
                         modifier = Modifier.fillMaxWidth()
@@ -774,7 +764,9 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // --- ФУНКЦИЯ ЭКСПОРТА ---
+    // ----------------------------------------------
+    // ФУНКЦИЯ ЭКСПОРТА
+    // ----------------------------------------------
     private suspend fun exportHistory(context: Context, repo: HistoryRepository) {
         val list = repo.getHistory()
         if (list.isEmpty()) {
