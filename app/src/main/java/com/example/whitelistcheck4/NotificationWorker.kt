@@ -1,3 +1,4 @@
+// === NotificationWorker.kt ===
 package com.example.whitelistcheck4
 
 import android.Manifest
@@ -6,6 +7,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.ActivityCompat
@@ -23,14 +25,17 @@ class NotificationWorker(
         const val CHANNEL_ID = "whitelist_check_channel"
         const val PREFS_NAME = "whitelist_prefs"
         const val KEY_LAST_RESTRICTED = "last_restricted"
+        const val KEY_INTERVAL_MINUTES = "interval_minutes"
 
         fun schedule(context: Context) {
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val intervalMinutes = prefs.getInt(KEY_INTERVAL_MINUTES, 15)
+
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build()
 
-            // Проверка каждые 15 минут
-            val request = PeriodicWorkRequestBuilder<NotificationWorker>(15, TimeUnit.MINUTES)
+            val request = PeriodicWorkRequestBuilder<NotificationWorker>(intervalMinutes.toLong(), TimeUnit.MINUTES)
                 .setConstraints(constraints)
                 .build()
 
@@ -45,11 +50,16 @@ class NotificationWorker(
         fun cancel(context: Context) {
             WorkManager.getInstance(context).cancelUniqueWork("whitelist_check")
         }
+
+        fun reschedule(context: Context) {
+            cancel(context)
+            schedule(context)
+        }
     }
 
     override suspend fun doWork(): Result {
         return try {
-            val statuses = NetworkChecker.checkAll()
+            val statuses = NetworkChecker.checkAll(context)
             val restricted = NetworkChecker.isRestricted(statuses)
 
             val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
