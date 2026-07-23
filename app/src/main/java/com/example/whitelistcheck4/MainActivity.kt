@@ -37,10 +37,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.foundation.permissions.*
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
-import com.google.accompanist.permissions.ExperimentalPermissionsApi
-import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.google.android.gms.location.LocationServices
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
@@ -183,16 +182,13 @@ fun InfoScreen(title: String, message: String) {
 }
 
 // =============================================
-// 3. ГЛАВНЫЙ ЭКРАН (с кнопкой, 4 палочками, анимациями)
+// 3. ГЛАВНЫЙ ЭКРАН
 // =============================================
 @Composable
 fun MainScreen() {
-    val permissions = rememberMultiplePermissionsState(
-        permissions = listOf(
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.POST_NOTIFICATIONS
-        )
-    )
+    // --- Официальные Permission API вместо Accompanist ---
+    val locationPermissionState = rememberPermissionState(Manifest.permission.ACCESS_FINE_LOCATION)
+    val notificationPermissionState = rememberPermissionState(Manifest.permission.POST_NOTIFICATIONS)
 
     var resultText by remember { mutableStateOf("") }
     var isRestricted by remember { mutableStateOf<Boolean?>(null) }
@@ -206,7 +202,13 @@ fun MainScreen() {
     var showSitesDialog by remember { mutableStateOf(false) }
     var historyList by remember { mutableStateOf<List<HistoryEntity>>(emptyList()) }
     var intervalMinutes by remember { mutableStateOf(15) }
-    var customSites by remember { mutableStateOf(NetworkChecker.getSites(LocalContext.current)) }
+    
+    // Инициализация списка сайтов внутри Composable контекста
+    var customSites by remember { mutableStateOf(emptyList<Pair<String, String>>()) }
+    
+    LaunchedEffect(Unit) {
+        customSites = NetworkChecker.getSites(LocalContext.current)
+    }
 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -232,18 +234,24 @@ fun MainScreen() {
         ), label = "pulseScale"
     )
 
-    // Анимация для палочек (каждая со своей задержкой)
+    // Состояние высот палочек
     val barHeights = remember { mutableStateListOf(0.3f, 0.5f, 0.7f, 0.9f) }
-    if (isChecking) {
-        // Анимируем высоту палочек с разной задержкой
-        LaunchedEffect(Unit) {
-            while (isChecking) {
-                barHeights[0] = 0.3f + 0.7f * (1 + kotlin.math.sin(System.currentTimeMillis() / 300f)) / 2
-                barHeights[1] = 0.5f + 0.5f * (1 + kotlin.math.sin(System.currentTimeMillis() / 400f + 1f)) / 2
-                barHeights[2] = 0.7f + 0.3f * (1 + kotlin.math.sin(System.currentTimeMillis() / 500f + 2f)) / 2
-                barHeights[3] = 0.9f + 0.1f * (1 + kotlin.math.sin(System.currentTimeMillis() / 600f + 3f)) / 2
-                delay(50)
-            }
+
+    // Анимация палочек (исправлено: delay теперь внутри LaunchedEffect)
+    LaunchedEffect(isChecking) {
+        while (isChecking) {
+            barHeights[0] = 0.3f + 0.7f * (1 + kotlin.math.sin(System.currentTimeMillis() / 300f)) / 2
+            barHeights[1] = 0.5f + 0.5f * (1 + kotlin.math.sin(System.currentTimeMillis() / 400f + 1f)) / 2
+            barHeights[2] = 0.7f + 0.3f * (1 + kotlin.math.sin(System.currentTimeMillis() / 500f + 2f)) / 2
+            barHeights[3] = 0.9f + 0.1f * (1 + kotlin.math.sin(System.currentTimeMillis() / 600f + 3f)) / 2
+            delay(50)
+        }
+        // Сброс после остановки анимации
+        if (!isChecking) {
+            barHeights[0] = 0.3f
+            barHeights[1] = 0.5f
+            barHeights[2] = 0.7f
+            barHeights[3] = 0.9f
         }
     }
 
@@ -316,7 +324,7 @@ fun MainScreen() {
                     )
                     Spacer(modifier = Modifier.height(32.dp))
 
-                    // -------- КРУГЛАЯ КНОПКА С 4 АНИМИРОВАННЫМИ ПАЛОЧКАМИ --------
+                    // -------- КРУГЛАЯ КНОПКА С 4 ПАЛОЧКАМИ --------
                     Box(
                         modifier = Modifier
                             .size(160.dp)
@@ -338,18 +346,20 @@ fun MainScreen() {
                                         isRestricted = null
                                         addLog("▶ начата проверка")
 
-                                        if (ContextCompat.checkSelfPermission(
-                                                context,
-                                                Manifest.permission.ACCESS_FINE_LOCATION
-                                            ) != PackageManager.PERMISSION_GRANTED
-                                        ) {
-                                            permissions.launchMultiplePermissionRequest()
-                                            Toast.makeText(
-                                                context,
-                                                "Запросили разрешение на геолокацию",
-                                                Toast.LENGTH_SHORT
-                                            ).show()
-                                            addLog("⏸ запрошено разрешение")
+                                        // Проверка разрешений локации
+                                        if (!locationPermissionState.hasPermission) {
+                                            locationPermissionState.launchPermissionRequest()
+                                            if (locationPermissionState.shouldShowRationale) {
+                                                addLog("⏸ требуется пояснение для локации")
+                                            }
+                                            Toast.makeText(context, "Запрошено разрешение на геолокацию", Toast.LENGTH_SHORT).show()
+                                            isChecking = false
+                                            return@launch
+                                        }
+
+                                        // Проверка разрешений уведомлений
+                                        if (!notificationPermissionState.hasPermission) {
+                                            notificationPermissionState.launchPermissionRequest()
                                             isChecking = false
                                             return@launch
                                         }
@@ -401,17 +411,11 @@ fun MainScreen() {
                                         e.printStackTrace()
                                     } finally {
                                         isChecking = false
-                                        // сбрасываем палочки на статичные значения
-                                        barHeights[0] = 0.3f
-                                        barHeights[1] = 0.5f
-                                        barHeights[2] = 0.7f
-                                        barHeights[3] = 0.9f
                                     }
                                 }
                             },
                         contentAlignment = Alignment.Center
                     ) {
-                        // 4 палочки (без Canvas, через Column с Box)
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalAlignment = Alignment.Bottom,
@@ -427,22 +431,20 @@ fun MainScreen() {
                                             color = if (isRestricted == true) Color.White else Color.Black,
                                             shape = RoundedCornerShape(2.dp)
                                         )
-                                        .animateContentSize()
                                 )
                             }
+                            Text(
+                                text = if (isChecking) "..." else "проверить",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isRestricted == true) Color.White else Color.Black,
+                                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp)
+                            )
                         }
-                        Text(
-                            text = if (isChecking) "..." else "проверить",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isRestricted == true) Color.White else Color.Black,
-                            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp)
-                        )
                     }
 
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    // -------- РЕЗУЛЬТАТЫ (с анимацией появления) --------
                     AnimatedVisibility(
                         visible = resultText.isNotEmpty(),
                         enter = expandVertically(animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)),
@@ -541,6 +543,7 @@ fun MainScreen() {
                         .padding(16.dp)
                         .size(28.dp)
                         .clickable {
+                            // Этот вызов уже сделан один раз сверху, здесь можно обновить кэш при необходимости
                             customSites = NetworkChecker.getSites(context)
                             showSitesDialog = true
                         }
