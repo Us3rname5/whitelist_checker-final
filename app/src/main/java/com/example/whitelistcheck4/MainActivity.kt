@@ -112,28 +112,61 @@ class MainActivity : ComponentActivity() {
             window.statusBarColor = android.graphics.Color.BLACK
         }
 
+        val connectionStatus = checkConnectionStatus(this)
+
         setContent {
-            val connectionStatus = checkConnectionStatus(this)
+            // Определяем контент в зависимости от статуса соединения
             when (connectionStatus) {
-                ConnectionStatus.NO_SIM -> {
-                    NoSimScreen()
-                }
-                ConnectionStatus.NO_INTERNET -> {
-                    MessageScreen("проверка недоступна", "нет интернет-соединения")
-                }
-                ConnectionStatus.WIFI_AND_MOBILE -> {
-                    MessageScreen("проверка недоступна", "отключите Wi-Fi")
-                }
-                else -> {
-                    MainScreen()
+                ConnectionStatus.NO_SIM -> NoSimScreen()
+                ConnectionStatus.NO_INTERNET -> InfoScreen("проверка недоступна", "нет интернет-соединения")
+                ConnectionStatus.WIFI_AND_MOBILE -> InfoScreen("проверка недоступна", "отключите Wi-Fi")
+                ConnectionStatus.MOBILE_ONLY -> MainScreen()
+            }
+        }
+    }
+
+    // --- ЭКРАН "НЕТ SIM" ---
+    @Composable
+    fun NoSimScreen() {
+        val context = LocalContext.current
+        Box(modifier = Modifier.fillMaxSize().background(Color(0xFF1A1A1A)), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
+                Text("нет sim-карты".lowercase(), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    "для работы приложения необходима мобильная сеть.\nвы можете приобрести sim-карту в любом салоне связи:\n• мтс\n• мегафон\n• теле2 и других.".lowercase(),
+                    fontSize = 16.sp,
+                    color = Color.White.copy(alpha = 0.8f)
+                )
+                Spacer(modifier = Modifier.height(32.dp))
+                Button(
+                    onClick = { (context as? android.app.Activity)?.finish() },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFCF6679), contentColor = Color.White),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth().height(56.dp)
+                ) {
+                    Text("закрыть приложение".lowercase(), fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
     }
 
+    // --- ИНФОРМАЦИОННЫЙ ЭКРАН ---
+    @Composable
+    fun InfoScreen(title: String, message: String) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Text(message, fontSize = 16.sp)
+        }
+    }
+
+    // --- ГЛАВНЫЙ ЭКРАН ---
     @Composable
     fun MainScreen() {
-        val context = LocalContext.current
         val permissions = rememberMultiplePermissionsState(
             permissions = listOf(
                 Manifest.permission.ACCESS_FINE_LOCATION,
@@ -153,11 +186,12 @@ class MainActivity : ComponentActivity() {
         var showSitesDialog by remember { mutableStateOf(false) }
         var historyList by remember { mutableStateOf<List<HistoryEntity>>(emptyList()) }
         var intervalMinutes by remember { mutableStateOf(15) }
-        var customSites by remember { mutableStateOf(NetworkChecker.getSites(context)) }
+        var customSites by remember { mutableStateOf(NetworkChecker.getSites(LocalContext.current)) }
         var newSiteName by remember { mutableStateOf("") }
         var newSiteUrl by remember { mutableStateOf("") }
 
         val scope = rememberCoroutineScope()
+        val context = LocalContext.current
         val historyRepo = remember { HistoryRepository(context) }
         val prefs = context.getSharedPreferences("whitelist_prefs", Context.MODE_PRIVATE)
 
@@ -270,12 +304,16 @@ class MainActivity : ComponentActivity() {
                                             addLog("▶ начата проверка")
 
                                             if (ContextCompat.checkSelfPermission(
-                                                    context,
+                                                    this@MainActivity,
                                                     Manifest.permission.ACCESS_FINE_LOCATION
                                                 ) != PackageManager.PERMISSION_GRANTED
                                             ) {
                                                 permissions.launchMultiplePermissionRequest()
-                                                Toast.makeText(context, "Запросили разрешение на геолокацию", Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(
+                                                    this@MainActivity,
+                                                    "Запросили разрешение на геолокацию",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
                                                 addLog("⏸ запрошено разрешение")
                                                 isChecking = false
                                                 return@launch
@@ -283,7 +321,9 @@ class MainActivity : ComponentActivity() {
 
                                             var location = ""
                                             try {
-                                                val loc = LocationServices.getFusedLocationProviderClient(context).lastLocation.await()
+                                                val loc = LocationServices.getFusedLocationProviderClient(
+                                                    this@MainActivity
+                                                ).lastLocation.await()
                                                 location = "координаты: ${"%.4f".format(loc.latitude)}, ${"%.4f".format(loc.longitude)}"
                                             } catch (e: Exception) {
                                                 location = "геолокация недоступна"
@@ -301,7 +341,11 @@ class MainActivity : ComponentActivity() {
                                             }
 
                                             val available = statuses.count { it.isAccessible }
-                                            Toast.makeText(context, "Доступно: $available из ${statuses.size}", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(
+                                                this@MainActivity,
+                                                "Доступно: $available из ${statuses.size}",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
                                             addLog("✅ проверка завершена, доступно $available из ${statuses.size}")
                                             statuses.forEach { addLog("  ${it.name}: ${if (it.isAccessible) "OK" else "❌"}") }
 
@@ -315,7 +359,11 @@ class MainActivity : ComponentActivity() {
                                         } catch (e: Exception) {
                                             resultText = "ошибка: ${e.message}"
                                             addLog("⚠ ошибка: ${e.message}")
-                                            Toast.makeText(context, "Ошибка: ${e.message}", Toast.LENGTH_LONG).show()
+                                            Toast.makeText(
+                                                this@MainActivity,
+                                                "Ошибка: ${e.message}",
+                                                Toast.LENGTH_LONG
+                                            ).show()
                                             e.printStackTrace()
                                         } finally {
                                             isChecking = false
@@ -487,238 +535,246 @@ class MainActivity : ComponentActivity() {
                     )
                 }
             }
+        }
 
-            // --- Диалог истории ---
-            if (showHistoryDialog) {
-                Dialog(onDismissRequest = { showHistoryDialog = false }) {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                            .heightIn(max = 400.dp),
-                        shape = RoundedCornerShape(16.dp)
+        // Диалоги
+        if (showHistoryDialog) {
+            HistoryDialog(historyList) { showHistoryDialog = false }
+        }
+        if (showSettingsDialog) {
+            SettingsDialog(
+                notificationEnabled = notificationEnabled,
+                onNotificationToggle = { enabled ->
+                    notificationEnabled = enabled
+                    if (enabled) {
+                        NotificationWorker.schedule(context)
+                        Toast.makeText(context, "оповещения включены", Toast.LENGTH_SHORT).show()
+                        addLog("🔔 уведомления включены")
+                    } else {
+                        NotificationWorker.cancel(context)
+                        Toast.makeText(context, "оповещения отключены", Toast.LENGTH_SHORT).show()
+                        addLog("🔕 уведомления отключены")
+                    }
+                },
+                intervalMinutes = intervalMinutes,
+                onIntervalChange = { newInterval ->
+                    intervalMinutes = newInterval
+                    prefs.edit().putInt("interval_minutes", intervalMinutes).apply()
+                    NotificationWorker.reschedule(context)
+                    Toast.makeText(context, "интервал: $intervalMinutes мин", Toast.LENGTH_SHORT).show()
+                },
+                onDismiss = { showSettingsDialog = false }
+            )
+        }
+        if (showSitesDialog) {
+            SitesDialog(
+                sites = customSites,
+                onSitesChange = { newSites ->
+                    customSites = newSites
+                    NetworkChecker.saveSites(context, customSites)
+                },
+                onDismiss = { showSitesDialog = false }
+            )
+        }
+    }
+
+    // --- ДИАЛОГ ИСТОРИИ ---
+    @Composable
+    fun HistoryDialog(historyList: List<HistoryEntity>, onDismiss: () -> Unit) {
+        Dialog(onDismissRequest = onDismiss) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .heightIn(max = 400.dp),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("история проверок", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    if (historyList.isEmpty()) {
+                        Text("пока нет записей", color = Color.Gray)
+                    } else {
+                        LazyColumn {
+                            items(historyList) { entry ->
+                                val date = SimpleDateFormat("dd.MM HH:mm", Locale.getDefault()).format(Date(entry.timestamp))
+                                Text(
+                                    text = "$date | ${if (entry.isRestricted) "🚫" else "✅"} | ${entry.statusesJson}",
+                                    fontSize = 13.sp,
+                                    modifier = Modifier.padding(vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = onDismiss,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text("история проверок", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.height(8.dp))
-                            if (historyList.isEmpty()) {
-                                Text("пока нет записей", color = Color.Gray)
+                        Text("закрыть")
+                    }
+                }
+            }
+        }
+    }
+
+    // --- ДИАЛОГ НАСТРОЕК ---
+    @Composable
+    fun SettingsDialog(
+        notificationEnabled: Boolean,
+        onNotificationToggle: (Boolean) -> Unit,
+        intervalMinutes: Int,
+        onIntervalChange: (Int) -> Unit,
+        onDismiss: () -> Unit
+    ) {
+        Dialog(onDismissRequest = onDismiss) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("настройки", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Text("push-уведомления", fontSize = 16.sp, modifier = Modifier.weight(1f))
+                        Switch(
+                            checked = notificationEnabled,
+                            onCheckedChange = onNotificationToggle
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Text("интервал проверки", fontSize = 16.sp, modifier = Modifier.weight(1f))
+                        Button(
+                            onClick = {
+                                val intervals = listOf(5, 15, 30, 60)
+                                val index = intervals.indexOf(intervalMinutes)
+                                val nextIndex = (index + 1) % intervals.size
+                                onIntervalChange(intervals[nextIndex])
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent)
+                        ) {
+                            Text("$intervalMinutes мин", fontWeight = FontWeight.Bold)
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = onDismiss,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("закрыть")
+                    }
+                }
+            }
+        }
+    }
+
+    // --- ДИАЛОГ УПРАВЛЕНИЯ САЙТАМИ ---
+    @Composable
+    fun SitesDialog(
+        sites: List<Pair<String, String>>,
+        onSitesChange: (List<Pair<String, String>>) -> Unit,
+        onDismiss: () -> Unit
+    ) {
+        var localSites by remember { mutableStateOf(sites) }
+        var newSiteName by remember { mutableStateOf("") }
+        var newSiteUrl by remember { mutableStateOf("") }
+
+        Dialog(onDismissRequest = onDismiss) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .heightIn(max = 400.dp),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("управление сайтами", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    LazyColumn(modifier = Modifier.weight(1f)) {
+                        items(localSites) { site ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("${site.first} (${site.second})", fontSize = 14.sp)
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = "Удалить",
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .clickable {
+                                            localSites = localSites.filter { it != site }
+                                            onSitesChange(localSites)
+                                            Toast.makeText(LocalContext.current, "Сайт удалён", Toast.LENGTH_SHORT).show()
+                                        }
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row {
+                        OutlinedTextField(
+                            value = newSiteName,
+                            onValueChange = { newSiteName = it },
+                            label = { Text("Название") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        OutlinedTextField(
+                            value = newSiteUrl,
+                            onValueChange = { newSiteUrl = it },
+                            label = { Text("URL") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true
+                        )
+                    }
+                    Button(
+                        onClick = {
+                            if (newSiteName.isNotBlank() && newSiteUrl.isNotBlank()) {
+                                val newSite = newSiteName.trim() to newSiteUrl.trim()
+                                if (localSites.none { it.first == newSite.first || it.second == newSite.second }) {
+                                    localSites = localSites + newSite
+                                    onSitesChange(localSites)
+                                    Toast.makeText(LocalContext.current, "Сайт добавлен", Toast.LENGTH_SHORT).show()
+                                    newSiteName = ""
+                                    newSiteUrl = ""
+                                } else {
+                                    Toast.makeText(LocalContext.current, "Такой сайт уже есть", Toast.LENGTH_SHORT).show()
+                                }
                             } else {
-                                LazyColumn {
-                                    items(historyList) { entry ->
-                                        val date = SimpleDateFormat("dd.MM HH:mm", Locale.getDefault()).format(Date(entry.timestamp))
-                                        Text(
-                                            text = "$date | ${if (entry.isRestricted) "🚫" else "✅"} | ${entry.statusesJson}",
-                                            fontSize = 13.sp,
-                                            modifier = Modifier.padding(vertical = 2.dp)
-                                        )
-                                    }
-                                }
+                                Toast.makeText(LocalContext.current, "Заполните оба поля", Toast.LENGTH_SHORT).show()
                             }
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Button(
-                                onClick = { showHistoryDialog = false },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("закрыть")
-                            }
-                        }
-                    }
-                }
-            }
-
-            // --- Диалог настроек ---
-            if (showSettingsDialog) {
-                Dialog(onDismissRequest = { showSettingsDialog = false }) {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        shape = RoundedCornerShape(16.dp)
+                        },
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text("настройки", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.height(12.dp))
-
-                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                                Text("push-уведомления", fontSize = 16.sp, modifier = Modifier.weight(1f))
-                                Switch(
-                                    checked = notificationEnabled,
-                                    onCheckedChange = { enabled ->
-                                        notificationEnabled = enabled
-                                        if (enabled) {
-                                            NotificationWorker.schedule(context)
-                                            Toast.makeText(context, "оповещения включены", Toast.LENGTH_SHORT).show()
-                                            addLog("🔔 уведомления включены")
-                                        } else {
-                                            NotificationWorker.cancel(context)
-                                            Toast.makeText(context, "оповещения отключены", Toast.LENGTH_SHORT).show()
-                                            addLog("🔕 уведомления отключены")
-                                        }
-                                    }
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(12.dp))
-
-                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                                Text("интервал проверки", fontSize = 16.sp, modifier = Modifier.weight(1f))
-                                Button(
-                                    onClick = {
-                                        val intervals = listOf(5, 15, 30, 60)
-                                        val index = intervals.indexOf(intervalMinutes)
-                                        val nextIndex = (index + 1) % intervals.size
-                                        intervalMinutes = intervals[nextIndex]
-                                        prefs.edit().putInt("interval_minutes", intervalMinutes).apply()
-                                        NotificationWorker.reschedule(context)
-                                        Toast.makeText(context, "интервал: $intervalMinutes мин", Toast.LENGTH_SHORT).show()
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent)
-                                ) {
-                                    Text("$intervalMinutes мин", fontWeight = FontWeight.Bold)
-                                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Button(
-                                onClick = { showSettingsDialog = false },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("закрыть")
-                            }
-                        }
+                        Text("Добавить")
                     }
-                }
-            }
 
-            // --- Диалог управления сайтами ---
-            if (showSitesDialog) {
-                Dialog(onDismissRequest = { showSitesDialog = false }) {
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                            .heightIn(max = 400.dp),
-                        shape = RoundedCornerShape(16.dp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = onDismiss,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text("управление сайтами", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            LazyColumn(modifier = Modifier.weight(1f)) {
-                                items(customSites) { site ->
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text("${site.first} (${site.second})", fontSize = 14.sp)
-                                        Icon(
-                                            Icons.Default.Delete,
-                                            contentDescription = "Удалить",
-                                            modifier = Modifier
-                                                .size(20.dp)
-                                                .clickable {
-                                                    customSites = customSites.filter { it != site }
-                                                    NetworkChecker.saveSites(context, customSites)
-                                                    Toast.makeText(context, "Сайт удалён", Toast.LENGTH_SHORT).show()
-                                                }
-                                        )
-                                    }
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Row {
-                                OutlinedTextField(
-                                    value = newSiteName,
-                                    onValueChange = { newSiteName = it },
-                                    label = { Text("Название") },
-                                    modifier = Modifier.weight(1f),
-                                    singleLine = true
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                OutlinedTextField(
-                                    value = newSiteUrl,
-                                    onValueChange = { newSiteUrl = it },
-                                    label = { Text("URL") },
-                                    modifier = Modifier.weight(1f),
-                                    singleLine = true
-                                )
-                            }
-                            Button(
-                                onClick = {
-                                    if (newSiteName.isNotBlank() && newSiteUrl.isNotBlank()) {
-                                        val newSite = newSiteName.trim() to newSiteUrl.trim()
-                                        if (customSites.none { it.first == newSite.first || it.second == newSite.second }) {
-                                            customSites = customSites + newSite
-                                            NetworkChecker.saveSites(context, customSites)
-                                            Toast.makeText(context, "Сайт добавлен", Toast.LENGTH_SHORT).show()
-                                            newSiteName = ""
-                                            newSiteUrl = ""
-                                        } else {
-                                            Toast.makeText(context, "Такой сайт уже есть", Toast.LENGTH_SHORT).show()
-                                        }
-                                    } else {
-                                        Toast.makeText(context, "Заполните оба поля", Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("Добавить")
-                            }
-
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Button(
-                                onClick = { showSitesDialog = false },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("закрыть")
-                            }
-                        }
+                        Text("закрыть")
                     }
                 }
             }
         }
     }
 
-    @Composable
-    fun NoSimScreen() {
-        val context = LocalContext.current
-        Box(modifier = Modifier.fillMaxSize().background(Color(0xFF1A1A1A)), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
-                Text("нет sim-карты".lowercase(), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    "для работы приложения необходима мобильная сеть.\nвы можете приобрести sim-карту в любом салоне связи:\n• мтс\n• мегафон\n• теле2 и других.".lowercase(),
-                    fontSize = 16.sp,
-                    color = Color.White.copy(alpha = 0.8f)
-                )
-                Spacer(modifier = Modifier.height(32.dp))
-                Button(
-                    onClick = { (context as? android.app.Activity)?.finish() },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFCF6679), contentColor = Color.White),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth().height(56.dp)
-                ) {
-                    Text("закрыть приложение".lowercase(), fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-    }
-
-    @Composable
-    fun MessageScreen(title: String, message: String) {
-        Box(modifier = Modifier.fillMaxSize().background(Color(0xFF1A1A1A)), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
-                Text(title, fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(message, fontSize = 18.sp, color = Color.White.copy(alpha = 0.8f), textAlign = TextAlign.Center)
-            }
-        }
-    }
-
+    // --- ФУНКЦИЯ ЭКСПОРТА ---
     private suspend fun exportHistory(context: Context, repo: HistoryRepository) {
         val list = repo.getHistory()
         if (list.isEmpty()) {
