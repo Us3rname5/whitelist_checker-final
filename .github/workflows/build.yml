@@ -16,35 +16,34 @@ jobs:
         uses: actions/checkout@v4
 
       # 2. Настраиваем Java 17 (обязательно для AGP 8.5+ и Kotlin 2.0)
-      - name: Set up JDK 17
+      - name: Set up JDK 17 👉🏻
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
           cache: gradle
 
-      # 3. Если собираете Release сборку с подписью (опционально)
-      # Раскомментируйте блок ниже, если у вас есть секреты подписи
-      #
-      # - name: Import Keystore for Signing
-      #   if: github.ref == 'refs/heads/main' && success()
-      #   run: |
-      #     echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > keystore.jks
-      
-      # 4. Даем права на запуск Gradle Wrapper
+      # 3. Даём права на запуск Gradle Wrapper
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
 
-      # 5. Собираем приложение (Debug или Release)
-      # Используем флаги для детального лога при падении
+      # 4. Собираем Debug APK 📦
       - name: Build Debug APK
-        env:
-          # Расскомментируйте переменные ниже, если используете подпись выше
-          # ANDROID_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          # ANDROID_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          # ANDROID_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        run: |
+          ./gradlew assembleDebug --no-daemon --stacktrace
 
+      # 5. Опционально: прогоняем тесты ✅
+      # Если у тебя есть модульные или UI-тесты, можно добавить этот шаг
+      # - name: Run Unit Tests
+      #   run: ./gradlew test --no-daemon
+
+      # 6. Опционально: выгружаем артефакт в Artifacts GitHub Actions ⬇️
+      # Это позволит скачать собранную .apk прямо с интерфейса действий
+      # - name: Upload APK as artifact
+      #   uses: actions/upload-artifact@v3
+      #   with:
+      #     name: app-debug.apk
+      #     path: app/build/outputs/apk/debug/app-debug.apk
       # 6. Прогоняем тесты (чтобы убедиться, что логика не сломана)
       - name: Run Unit Tests
         run: ./gradlew test --no-daemon
