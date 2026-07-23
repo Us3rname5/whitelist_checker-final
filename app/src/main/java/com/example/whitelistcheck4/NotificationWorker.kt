@@ -1,4 +1,3 @@
-// === NotificationWorker.kt ===
 package com.example.whitelistcheck4
 
 import android.Manifest
@@ -67,9 +66,9 @@ class NotificationWorker(
 
             if (restricted != lastRestricted) {
                 if (restricted) {
-                    sendNotification("ограничения включены", "youtube, telegram, whatsapp и vpn могут быть недоступны.")
+                    sendNotification("ограничения включены", "некоторые зарубежные сайты могут быть недоступны.")
                 } else {
-                    sendNotification("ограничения сняты", "youtube, telegram, whatsapp и vpn снова доступны.")
+                    sendNotification("ограничения сняты", "все сервисы снова доступны.")
                 }
             }
 
