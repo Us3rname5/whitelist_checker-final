@@ -1,4 +1,3 @@
-// === NetworkChecker.kt ===
 package com.example.whitelistcheck4
 
 import android.content.Context
@@ -108,13 +107,10 @@ object NetworkChecker {
 
     fun isRestricted(statuses: List<ServiceStatus>): Boolean {
         if (statuses.isEmpty()) return false
-        // Определяем российские сайты по названию (можно улучшить)
         val russianKeywords = listOf("госуслуги", "яндекс")
         val russianSites = statuses.filter { russianKeywords.any { keyword -> it.name.lowercase().contains(keyword) } }
         val foreignSites = statuses.filter { !russianKeywords.any { keyword -> it.name.lowercase().contains(keyword) } }
-
         if (russianSites.isEmpty() || foreignSites.isEmpty()) return false
-
         val allRussianOk = russianSites.all { it.isAccessible }
         val anyForeignBlocked = foreignSites.any { !it.isAccessible }
         return allRussianOk && anyForeignBlocked
