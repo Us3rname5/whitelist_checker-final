@@ -108,37 +108,43 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private suspend fun exportHistory(context: Context, repo: HistoryRepository) {
-        val list = repo.getHistory()
-        if (list.isEmpty()) {
-            Toast.makeText(context, "История пуста", Toast.LENGTH_SHORT).show()
-            return
+    // Функция экспорта (вызывается из MainScreen)
+    fun exportHistory(context: Context, repo: HistoryRepository) {
+        // Запускаем корутину
+        kotlinx.coroutines.GlobalScope.launch {
+            val list = repo.getHistory()
+            if (list.isEmpty()) {
+                (context as? android.app.Activity)?.runOnUiThread {
+                    Toast.makeText(context, "История пуста", Toast.LENGTH_SHORT).show()
+                }
+                return@launch
+            }
+            val sb = StringBuilder()
+            sb.append("Whitelist Checker - история проверок\n")
+            sb.append("=====================================\n\n")
+            list.forEach { entry ->
+                val date = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(entry.timestamp))
+                sb.append("$date | ${if (entry.isRestricted) "ОГРАНИЧЕНИЯ" else "СВОБОДА"}\n")
+                sb.append("   Статусы: ${entry.statusesJson}\n")
+                if (entry.location != null) sb.append("   Локация: ${entry.location}\n")
+                sb.append("\n")
+            }
+            val file = File(context.cacheDir, "history_${System.currentTimeMillis()}.txt")
+            file.writeText(sb.toString())
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(shareIntent, "Экспорт истории"))
         }
-        val sb = StringBuilder()
-        sb.append("Whitelist Checker - история проверок\n")
-        sb.append("=====================================\n\n")
-        list.forEach { entry ->
-            val date = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(entry.timestamp))
-            sb.append("$date | ${if (entry.isRestricted) "ОГРАНИЧЕНИЯ" else "СВОБОДА"}\n")
-            sb.append("   Статусы: ${entry.statusesJson}\n")
-            if (entry.location != null) sb.append("   Локация: ${entry.location}\n")
-            sb.append("\n")
-        }
-        val file = File(context.cacheDir, "history_${System.currentTimeMillis()}.txt")
-        file.writeText(sb.toString())
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-        val shareIntent = Intent(Intent.ACTION_SEND).apply {
-            type = "text/plain"
-            putExtra(Intent.EXTRA_STREAM, uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        context.startActivity(Intent.createChooser(shareIntent, "Экспорт истории"))
     }
 }
 
-// ===================================================
-// ВСПОМОГАТЕЛЬНЫЕ @Composable ФУНКЦИИ (вне класса)
-// ===================================================
+// =============================================
+// ВСПОМОГАТЕЛЬНЫЕ @Composable ФУНКЦИИ
+// =============================================
 
 @Composable
 fun NoSimScreen() {
@@ -291,7 +297,7 @@ fun MainScreen() {
                     )
                     Spacer(modifier = Modifier.height(32.dp))
 
-                    // КНОПКА
+                    // ---- КНОПКА ----
                     Box(
                         modifier = Modifier
                             .size(160.dp)
@@ -513,13 +519,8 @@ fun MainScreen() {
                         .padding(16.dp)
                         .size(28.dp)
                         .clickable {
-                            scope.launch {
-                                // Экспорт требует контекста, передадим через замыкание
-                                // Но мы не можем вызывать suspend функцию изнутри onClick напрямую,
-                                // поэтому используем launch
-                                val activity = context as? MainActivity
-                                activity?.exportHistory(context, historyRepo)
-                            }
+                            val activity = context as? MainActivity
+                            activity?.exportHistory(context, historyRepo)
                         }
                         .align(Alignment.BottomEnd)
                 )
