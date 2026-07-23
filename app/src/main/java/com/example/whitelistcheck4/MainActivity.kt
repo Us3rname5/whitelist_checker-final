@@ -172,6 +172,7 @@ class MainActivity : ComponentActivity() {
                     false
                 }
                 ConnectionStatus.NO_SIM -> {
+                    // Отображаем экран "Нет SIM" внутри @Composable
                     NoSimScreen(context)
                     return@setContent
                 }
@@ -264,7 +265,7 @@ class MainActivity : ComponentActivity() {
                             )
                             Spacer(modifier = Modifier.height(32.dp))
 
-                            // ---- КРУГЛАЯ КНОПКА ----
+                            // КРУГЛАЯ КНОПКА
                             Box(
                                 modifier = Modifier
                                     .size(160.dp)
@@ -355,7 +356,7 @@ class MainActivity : ComponentActivity() {
                                     },
                                 contentAlignment = Alignment.Center
                             ) {
-                                // Рисуем 4 палочки
+                                // Рисуем 4 палочки с помощью Canvas
                                 androidx.compose.foundation.Canvas(modifier = Modifier.size(80.dp)) {
                                     val barWidth = size.width / 10f
                                     val barGap = size.width / 20f
@@ -397,7 +398,7 @@ class MainActivity : ComponentActivity() {
 
                             Spacer(modifier = Modifier.height(24.dp))
 
-                            // --- РЕЗУЛЬТАТЫ ---
+                            // РЕЗУЛЬТАТЫ
                             AnimatedVisibility(
                                 visible = resultText.isNotEmpty(),
                                 enter = expandVertically(animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)),
@@ -444,7 +445,7 @@ class MainActivity : ComponentActivity() {
 
                             Spacer(modifier = Modifier.height(16.dp))
 
-                            // --- ЛОГИ ---
+                            // ЛОГИ
                             if (logs.isNotEmpty()) {
                                 Text("логи:".lowercase(), fontSize = 12.sp, color = contentColor.copy(alpha = 0.6f))
                                 logs.forEach { log ->
@@ -458,7 +459,7 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        // --- ИКОНКИ ПО ПЕРИМЕТРУ ---
+                        // ИКОНКИ ПО ПЕРИМЕТРУ
                         Icon(
                             imageVector = Icons.Default.History,
                             contentDescription = "История",
@@ -749,7 +750,7 @@ class MainActivity : ComponentActivity() {
                 Text("нет sim-карты".lowercase(), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    "для работы приложения необходима мобильная сеть.\nвы можете приобрести sim-карту в любом салоне связи:\n• мтс\n• мегафон\n• теле2 и других.".lowercase(),
+                    "для работы приложения необходима мобильная сеть.\nвы можете приобрести sim-карту в любом салоне связи:\n• мтс\n• мегафон\n• теле2 (t2) и других.".lowercase(),
                     fontSize = 16.sp,
                     color = Color.White.copy(alpha = 0.8f)
                 )
