@@ -37,10 +37,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import androidx.compose.foundation.permissions.* // Для разрешений
+import androidx.compose.foundation.permissions.*
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.google.android.gms.location.LocationServices
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import java.io.File
@@ -64,19 +65,16 @@ class MainActivity : ComponentActivity() {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
 
-        val hasSim =
-            tm.simState != TelephonyManager.SIM_STATE_ABSENT && tm.simState != TelephonyManager.SIM_STATE_UNKNOWN
+        val hasSim = tm.simState != TelephonyManager.SIM_STATE_ABSENT && tm.simState != TelephonyManager.SIM_STATE_UNKNOWN
         if (!hasSim) return ConnectionStatus.NO_SIM
 
         val activeNetwork = cm.activeNetwork ?: return ConnectionStatus.NO_INTERNET
-        val caps = cm.getNetworkCapabilities(activeNetwork)
-            ?: return ConnectionStatus.NO_INTERNET
+        val caps = cm.getNetworkCapabilities(activeNetwork) ?: return ConnectionStatus.NO_INTERNET
 
         val hasCellular = caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
         val hasWifi = caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
-        val isInternet =
-            caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-                    caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        val isInternet = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
 
         if (!isInternet) return ConnectionStatus.NO_INTERNET
 
@@ -95,9 +93,9 @@ class MainActivity : ComponentActivity() {
             window.statusBarColor = android.graphics.Color.BLACK
         }
 
-        setContent {
-            val connectionStatus = remember { checkConnectionStatus(this) } // Вызов перенесён сюда
+        val connectionStatus = checkConnectionStatus(this)
 
+        setContent {
             when (connectionStatus) {
                 ConnectionStatus.NO_SIM -> NoSimScreen()
                 ConnectionStatus.NO_INTERNET -> InfoScreen("проверка недоступна", "нет интернет-соединения")
@@ -120,10 +118,7 @@ class MainActivity : ComponentActivity() {
             sb.append("Whitelist Checker - история проверок\n")
             sb.append("=====================================\n\n")
             list.forEach { entry ->
-                val date = SimpleDateFormat(
-                    "dd.MM.yyyy HH:mm",
-                    Locale.getDefault()
-                ).format(Date(entry.timestamp))
+                val date = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(entry.timestamp))
                 sb.append("$date | ${if (entry.isRestricted) "ОГРАНИЧЕНИЯ" else "СВОБОДА"}\n")
                 sb.append("   Статусы: ${entry.statusesJson}\n")
                 if (entry.location != null) sb.append("   Локация: ${entry.location}\n")
@@ -131,11 +126,7 @@ class MainActivity : ComponentActivity() {
             }
             val file = File(context.cacheDir, "history_${System.currentTimeMillis()}.txt")
             file.writeText(sb.toString())
-            val uri = FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.fileprovider",
-                file
-            )
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
                 putExtra(Intent.EXTRA_STREAM, uri)
@@ -146,32 +137,21 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// ----------------------------------------------
+// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+// ----------------------------------------------
+
 @Composable
 fun NoSimScreen() {
     val context = LocalContext.current
-    Box(
-        modifier = Modifier.fillMaxSize().background(Color(0xFF1A1A1A)),
-        contentAlignment = Alignment.Center
-    ) {
+    Box(modifier = Modifier.fillMaxSize().background(Color(0xFF1A1A1A)), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
-            Text(
-                text = "нет sim-карты".lowercase(),
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White
-            )
+            Text("нет sim-карты".lowercase(), fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color.White)
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = """
-                    для работы приложения необходима мобильная сеть.
-                    вы можете приобрести sim-карту в любом салоне связи:
-                    • мтс
-                    • мегафон
-                    • теле2 и других.""".trimMargin(),
+                "для работы приложения необходима мобильная сеть.\nвы можете приобрести sim-карту в любом салоне связи:\n• мтс\n• мегафон\n• теле2 и других.".lowercase(),
                 fontSize = 16.sp,
-                color = Color.White.copy(alpha = 0.8f),
-                softWrap = true,
-                textAlign = TextAlign.Center
+                color = Color.White.copy(alpha = 0.8f)
             )
             Spacer(modifier = Modifier.height(32.dp))
             Button(
@@ -180,11 +160,7 @@ fun NoSimScreen() {
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth().height(56.dp)
             ) {
-                Text(
-                    text = "закрыть приложение".lowercase(),
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Text("закрыть приложение".lowercase(), fontSize = 18.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -197,19 +173,19 @@ fun InfoScreen(title: String, message: String) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text(text = title, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        Text(text = message, fontSize = 16.sp)
+        Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+        Text(message, fontSize = 16.sp)
     }
 }
 
 @Composable
 fun MainScreen() {
-    // 🔥 Новые официальные API для разрешений
     val locationPermissionState = rememberPermissionState(Manifest.permission.ACCESS_FINE_LOCATION)
     val notificationPermissionState = rememberPermissionState(Manifest.permission.POST_NOTIFICATIONS)
 
     var resultText by remember { mutableStateOf("") }
     var isRestricted by remember { mutableStateOf<Boolean?>(null) }
+    var notificationEnabled by remember { mutableStateOf(false) } // ✅ добавлено
     var serviceStatuses by remember { mutableStateOf<List<ServiceStatus>>(emptyList()) }
     var locationInfo by remember { mutableStateOf("") }
     var isChecking by remember { mutableStateOf(false) }
@@ -219,12 +195,7 @@ fun MainScreen() {
     var showSitesDialog by remember { mutableStateOf(false) }
     var historyList by remember { mutableStateOf<List<HistoryEntity>>(emptyList()) }
     var intervalMinutes by remember { mutableStateOf(15) }
-    
-    // Инициализация списка сайтов ДЛЯ КОМПОНУЕМЫХ функций
-    LaunchedEffect(Unit) {
-        val sites = NetworkChecker.getSites(LocalContext.current)
-        showSitesDialog = false // Если был открыт диалог при старте
-    }
+    var customSites by remember { mutableStateOf(NetworkChecker.getSites(LocalContext.current)) } // ✅ добавлено
 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -239,7 +210,6 @@ fun MainScreen() {
         logs = (logs + message).takeLast(15)
     }
 
-    // Анимации
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 1f,
@@ -250,25 +220,18 @@ fun MainScreen() {
         ), label = "pulseScale"
     )
 
-    // Состояние высот палочек
     val barHeights = remember { mutableStateListOf(0.3f, 0.5f, 0.7f, 0.9f) }
 
-    // Анимация палочек
     LaunchedEffect(isChecking) {
         while (isChecking) {
-            for ((index, _) in barHeights.withIndex()) {
-                barHeights[index] = when (index) {
-                    0 -> 0.3f + 0.7f * (1 + kotlin.math.sin(System.currentTimeMillis() / 300f)) / 2
-                    1 -> 0.5f + 0.5f * (1 + kotlin.math.sin(System.currentTimeMillis() / 400f + 1f)) / 2
-                    2 -> 0.7f + 0.3f * (1 + kotlin.math.sin(System.currentTimeMillis() / 500f + 2f)) / 2
-                    else -> 0.9f + 0.1f * (1 + kotlin.math.sin(System.currentTimeMillis() / 600f + 3f)) / 2
-                }
-            }
+            barHeights[0] = 0.3f + 0.7f * (1 + kotlin.math.sin(System.currentTimeMillis() / 300f)) / 2
+            barHeights[1] = 0.5f + 0.5f * (1 + kotlin.math.sin(System.currentTimeMillis() / 400f + 1f)) / 2
+            barHeights[2] = 0.7f + 0.3f * (1 + kotlin.math.sin(System.currentTimeMillis() / 500f + 2f)) / 2
+            barHeights[3] = 0.9f + 0.1f * (1 + kotlin.math.sin(System.currentTimeMillis() / 600f + 3f)) / 2
             delay(50)
         }
     }
 
-    // Цветовая схема
     val currentHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
     val isNight = currentHour in 22..23 || currentHour in 0..6
 
@@ -312,15 +275,10 @@ fun MainScreen() {
             )
         )
     ) {
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = MaterialTheme.colorScheme.background
-        ) {
+        Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Box(modifier = Modifier.fillMaxSize()) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(24.dp),
+                    modifier = Modifier.fillMaxSize().padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
@@ -340,7 +298,7 @@ fun MainScreen() {
                     )
                     Spacer(modifier = Modifier.height(32.dp))
 
-                    // КНОПКА С ПАЛОЧКАМИ
+                    // -------- КНОПКА --------
                     Box(
                         modifier = Modifier
                             .size(160.dp)
@@ -362,22 +320,12 @@ fun MainScreen() {
                                         isRestricted = null
                                         addLog("▶ начата проверка")
 
-                                        // Проверка локации
                                         if (!locationPermissionState.hasPermission) {
                                             locationPermissionState.launchPermissionRequest()
-                                            if (locationPermissionState.shouldShowRationale) {
-                                                addLog("⏸ требуется пояснение для локации")
-                                            }
-                                            Toast.makeText(
-                                                context,
-                                                "Запрошено разрешение на геолокацию",
-                                                Toast.LENGTH_SHORT
-                                            ).show()
                                             isChecking = false
                                             return@launch
                                         }
 
-                                        // Проверка уведомлений
                                         if (!notificationPermissionState.hasPermission) {
                                             notificationPermissionState.launchPermissionRequest()
                                             isChecking = false
@@ -386,9 +334,7 @@ fun MainScreen() {
 
                                         var location = ""
                                         try {
-                                            val loc = LocationServices.getFusedLocationProviderClient(
-                                                context
-                                            ).lastLocation.await()
+                                            val loc = LocationServices.getFusedLocationProviderClient(context).lastLocation.await()
                                             location = "координаты: ${"%.4f".format(loc.latitude)}, ${"%.4f".format(loc.longitude)}"
                                         } catch (e: Exception) {
                                             location = "геолокация недоступна"
@@ -406,13 +352,9 @@ fun MainScreen() {
                                         }
 
                                         val available = statuses.count { it.isAccessible }
-                                        Toast.makeText(
-                                            context,
-                                            "Доступно: $available из ${statuses.size}",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
+                                        Toast.makeText(context, "Доступно: $available из ${statuses.size}", Toast.LENGTH_SHORT).show()
                                         addLog("✅ проверка завершена, доступно $available из ${statuses.size}")
-                                        statuses.forEach { addLog("  ${it.name}: ${if (it.isAccessible) "OK" else "🚫"}") }
+                                        statuses.forEach { addLog("  ${it.name}: ${if (it.isAccessible) "OK" else "❌"}") }
 
                                         historyRepo.saveCheck(isRestricted == true, statuses, locationInfo)
                                         historyList = historyRepo.getHistory()
@@ -423,11 +365,7 @@ fun MainScreen() {
                                     } catch (e: Exception) {
                                         resultText = "ошибка: ${e.message}"
                                         addLog("⚠ ошибка: ${e.message}")
-                                        Toast.makeText(
-                                            context,
-                                            "Ошибка: ${e.message}",
-                                            Toast.LENGTH_LONG
-                                        ).show()
+                                        Toast.makeText(context, "Ошибка: ${e.message}", Toast.LENGTH_LONG).show()
                                         e.printStackTrace()
                                     } finally {
                                         isChecking = false
@@ -453,18 +391,19 @@ fun MainScreen() {
                                         )
                                 )
                             }
-                            Text(
-                                text = if (isChecking) "..." else "проверить",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isRestricted == true) Color.White else Color.Black,
-                                modifier = Modifier.align(Alignment.BottomCenter) // Исправлено!
-                            )
                         }
+                        Text(
+                            text = if (isChecking) "..." else "проверить",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isRestricted == true) Color.White else Color.Black,
+                            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp)
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(24.dp))
 
+                    // -------- РЕЗУЛЬТАТЫ --------
                     AnimatedVisibility(
                         visible = resultText.isNotEmpty(),
                         enter = expandVertically(animationSpec = tween(300)) + fadeIn(animationSpec = tween(300)),
@@ -491,12 +430,12 @@ fun MainScreen() {
                             }
                             Spacer(modifier = Modifier.height(12.dp))
                             if (serviceStatuses.isNotEmpty()) {
-                                Text("статус сервисов:", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = contentColor)
+                                Text("статус сервисов:".lowercase(), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = contentColor)
                                 Spacer(modifier = Modifier.height(8.dp))
                                 serviceStatuses.forEach { service ->
                                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
                                         Icon(
-                                            imageVector = if (service.isAccessible) Icons.Filled.Check else Icons.Filled.Close,
+                                            if (service.isAccessible) Icons.Filled.Check else Icons.Filled.Close,
                                             contentDescription = null,
                                             tint = if (service.isAccessible) Color(0xFF4CAF50) else Color(0xFFE53935),
                                             modifier = Modifier.size(20.dp)
@@ -511,8 +450,9 @@ fun MainScreen() {
 
                     Spacer(modifier = Modifier.height(16.dp))
 
+                    // -------- ЛОГИ --------
                     if (logs.isNotEmpty()) {
-                        Text("логи:", lowercase = true, fontSize = 12.sp, color = contentColor.copy(alpha = 0.6f))
+                        Text("логи:".lowercase(), fontSize = 12.sp, color = contentColor.copy(alpha = 0.6f))
                         logs.forEach { log ->
                             Text(
                                 log,
@@ -524,7 +464,7 @@ fun MainScreen() {
                     }
                 }
 
-                // ИКОНКИ ПО ПЕРИМЕТРУ
+                // -------- ИКОНКИ ПО ПЕРИМЕТРУ --------
                 Icon(
                     imageVector = Icons.Default.History,
                     contentDescription = "История",
@@ -548,7 +488,9 @@ fun MainScreen() {
                     modifier = Modifier
                         .padding(16.dp)
                         .size(28.dp)
-                        .clickable { showSettingsDialog = true }
+                        .clickable {
+                            showSettingsDialog = true
+                        }
                         .align(Alignment.TopEnd)
                 )
 
@@ -559,7 +501,9 @@ fun MainScreen() {
                     modifier = Modifier
                         .padding(16.dp)
                         .size(28.dp)
-                        .clickable { showSitesDialog = true }
+                        .clickable {
+                            showSitesDialog = true
+                        }
                         .align(Alignment.BottomStart)
                 )
 
@@ -591,15 +535,23 @@ fun MainScreen() {
         SettingsDialog(
             notificationEnabled = notificationEnabled,
             onNotificationToggle = { enabled ->
-                NotificationWorker.scheduleOrCancel(context, enabled)
-                addLog("🔔 уведомления: $enabled")
+                notificationEnabled = enabled
+                if (enabled) {
+                    NotificationWorker.schedule(context)
+                    Toast.makeText(context, "оповещения включены", Toast.LENGTH_SHORT).show()
+                    addLog("🔔 уведомления включены")
+                } else {
+                    NotificationWorker.cancel(context)
+                    Toast.makeText(context, "оповещения отключены", Toast.LENGTH_SHORT).show()
+                    addLog("🔕 уведомления отключены")
+                }
             },
             intervalMinutes = intervalMinutes,
             onIntervalChange = { newInterval ->
                 intervalMinutes = newInterval
-                prefs.edit().putInt("interval_minutes", newInterval).apply()
-                NotificationWorker.reschedule(context, newInterval)
-                Toast.makeText(context, "интервал: $newInterval мин", Toast.LENGTH_SHORT).show()
+                prefs.edit().putInt("interval_minutes", intervalMinutes).apply()
+                NotificationWorker.reschedule(context)
+                Toast.makeText(context, "интервал: $intervalMinutes мин", Toast.LENGTH_SHORT).show()
             },
             onDismiss = { showSettingsDialog = false }
         )
@@ -616,10 +568,199 @@ fun MainScreen() {
     }
 }
 
-// Диалоги ниже — это просто заглушки. Ты можешь оставить свои оригинальные реализации.
+// -------- ДИАЛОГ ИСТОРИИ --------
 @Composable
-fun HistoryDialog(historyList: List<Any>, onDismiss: () -> Unit) {}
+fun HistoryDialog(historyList: List<HistoryEntity>, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .heightIn(max = 400.dp),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("история проверок", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(8.dp))
+                if (historyList.isEmpty()) {
+                    Text("пока нет записей", color = Color.Gray)
+                } else {
+                    LazyColumn {
+                        items(historyList) { entry ->
+                            val date = SimpleDateFormat("dd.MM HH:mm", Locale.getDefault()).format(Date(entry.timestamp))
+                            Text(
+                                text = "$date | ${if (entry.isRestricted) "🚫" else "✅"} | ${entry.statusesJson}",
+                                fontSize = 13.sp,
+                                modifier = Modifier.padding(vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("закрыть")
+                }
+            }
+        }
+    }
+}
+
+// -------- ДИАЛОГ НАСТРОЕК --------
 @Composable
-fun SettingsDialog(notificationEnabled: Boolean, onNotificationToggle: (Boolean) -> Unit, intervalMinutes: Int, onIntervalChange: (Int) -> Unit, onDismiss: () -> Unit) {}
+fun SettingsDialog(
+    notificationEnabled: Boolean,
+    onNotificationToggle: (Boolean) -> Unit,
+    intervalMinutes: Int,
+    onIntervalChange: (Int) -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("настройки", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text("push-уведомления", fontSize = 16.sp, modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = notificationEnabled,
+                        onCheckedChange = onNotificationToggle
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text("интервал проверки", fontSize = 16.sp, modifier = Modifier.weight(1f))
+                    Button(
+                        onClick = {
+                            val intervals = listOf(5, 15, 30, 60)
+                            val index = intervals.indexOf(intervalMinutes)
+                            val nextIndex = (index + 1) % intervals.size
+                            onIntervalChange(intervals[nextIndex])
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent)
+                    ) {
+                        Text("$intervalMinutes мин", fontWeight = FontWeight.Bold)
+                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("закрыть")
+                }
+            }
+        }
+    }
+}
+
+// -------- ДИАЛОГ УПРАВЛЕНИЯ САЙТАМИ --------
 @Composable
-fun SitesDialog(sites: List<Pair<String, String>>, onSitesChange: (List<Pair<String, String>>) -> Unit, onDismiss: () -> Unit) {}
+fun SitesDialog(
+    sites: List<Pair<String, String>>,
+    onSitesChange: (List<Pair<String, String>>) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var localSites by remember { mutableStateOf(sites) }
+    var newSiteName by remember { mutableStateOf("") }
+    var newSiteUrl by remember { mutableStateOf("") }
+    val context = LocalContext.current
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .heightIn(max = 400.dp),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("управление сайтами", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(8.dp))
+
+                LazyColumn(modifier = Modifier.weight(1f)) {
+                    items(localSites) { site ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("${site.first} (${site.second})", fontSize = 14.sp)
+                            Icon(
+                                Icons.Default.Delete,
+                                contentDescription = "Удалить",
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .clickable {
+                                        localSites = localSites.filter { it != site }
+                                        onSitesChange(localSites)
+                                        Toast.makeText(context, "Сайт удалён", Toast.LENGTH_SHORT).show()
+                                    }
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                Row {
+                    OutlinedTextField(
+                        value = newSiteName,
+                        onValueChange = { newSiteName = it },
+                        label = { Text("Название") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    OutlinedTextField(
+                        value = newSiteUrl,
+                        onValueChange = { newSiteUrl = it },
+                        label = { Text("URL") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
+                }
+                Button(
+                    onClick = {
+                        if (newSiteName.isNotBlank() && newSiteUrl.isNotBlank()) {
+                            val newSite = newSiteName.trim() to newSiteUrl.trim()
+                            if (localSites.none { it.first == newSite.first || it.second == newSite.second }) {
+                                localSites = localSites + newSite
+                                onSitesChange(localSites)
+                                Toast.makeText(context, "Сайт добавлен", Toast.LENGTH_SHORT).show()
+                                newSiteName = ""
+                                newSiteUrl = ""
+                            } else {
+                                Toast.makeText(context, "Такой сайт уже есть", Toast.LENGTH_SHORT).show()
+                            }
+                        } else {
+                            Toast.makeText(context, "Заполните оба поля", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Добавить")
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("закрыть")
+                }
+            }
+        }
+    }
+}
