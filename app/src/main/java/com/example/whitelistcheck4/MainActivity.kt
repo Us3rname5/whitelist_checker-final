@@ -96,8 +96,14 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            val status = remember { checkConnectionStatus(this) }
-            MainActivityScreen(status)
+            val status = checkConnectionStatus(this)
+            // Прямой when внутри setContent (гарантированно @Composable)
+            when (status) {
+                ConnectionStatus.NO_SIM -> NoSimScreen()
+                ConnectionStatus.NO_INTERNET -> InfoScreen("проверка недоступна", "нет интернет-соединения")
+                ConnectionStatus.WIFI_AND_MOBILE -> InfoScreen("проверка недоступна", "отключите Wi-Fi")
+                ConnectionStatus.MOBILE_ONLY -> MainScreen()
+            }
         }
     }
 
@@ -130,19 +136,6 @@ class MainActivity : ComponentActivity() {
             }
             context.startActivity(Intent.createChooser(shareIntent, "Экспорт истории"))
         }
-    }
-}
-
-// =============================================
-// ЕДИНАЯ @Composable ФУНКЦИЯ ДЛЯ ВСЕХ ЭКРАНОВ
-// =============================================
-@Composable
-fun MainActivityScreen(connectionStatus: ConnectionStatus) {
-    when (connectionStatus) {
-        ConnectionStatus.NO_SIM -> NoSimScreen()
-        ConnectionStatus.NO_INTERNET -> InfoScreen("проверка недоступна", "нет интернет-соединения")
-        ConnectionStatus.WIFI_AND_MOBILE -> InfoScreen("проверка недоступна", "отключите Wi-Fi")
-        ConnectionStatus.MOBILE_ONLY -> MainScreen()
     }
 }
 
