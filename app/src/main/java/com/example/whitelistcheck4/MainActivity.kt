@@ -96,17 +96,8 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            val status = checkConnectionStatus(this)
-            // Явно разделяем ветки через if-else, чтобы компилятор точно понимал контекст
-            if (status == ConnectionStatus.NO_SIM) {
-                NoSimScreen()
-            } else if (status == ConnectionStatus.NO_INTERNET) {
-                InfoScreen("проверка недоступна", "нет интернет-соединения")
-            } else if (status == ConnectionStatus.WIFI_AND_MOBILE) {
-                InfoScreen("проверка недоступна", "отключите Wi-Fi")
-            } else {
-                MainScreen()
-            }
+            val status = remember { checkConnectionStatus(this) }
+            App(status)
         }
     }
 
@@ -139,6 +130,19 @@ class MainActivity : ComponentActivity() {
             }
             context.startActivity(Intent.createChooser(shareIntent, "Экспорт истории"))
         }
+    }
+}
+
+// =============================================
+// ГЛАВНЫЙ КОМПОЗЕБЛ
+// =============================================
+@Composable
+fun App(status: ConnectionStatus) {
+    when (status) {
+        ConnectionStatus.NO_SIM -> NoSimScreen()
+        ConnectionStatus.NO_INTERNET -> InfoScreen("проверка недоступна", "нет интернет-соединения")
+        ConnectionStatus.WIFI_AND_MOBILE -> InfoScreen("проверка недоступна", "отключите Wi-Fi")
+        ConnectionStatus.MOBILE_ONLY -> MainScreen()
     }
 }
 
