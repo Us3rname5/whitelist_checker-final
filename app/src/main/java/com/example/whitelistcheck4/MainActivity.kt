@@ -189,15 +189,17 @@ fun InfoScreen(title: String, message: String) {
 // =============================================
 // ГЛАВНЫЙ ЭКРАН
 // =============================================
+@OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun MainScreen() {
+    val context = LocalContext.current 
+    
     val permissions = rememberMultiplePermissionsState(
         permissions = listOf(
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.POST_NOTIFICATIONS
         )
     )
-
     var resultText by remember { mutableStateOf("") }
     var isRestricted by remember { mutableStateOf<Boolean?>(null) }
     var notificationEnabled by remember { mutableStateOf(false) }
@@ -210,12 +212,15 @@ fun MainScreen() {
     var showSitesDialog by remember { mutableStateOf(false) }
     var historyList by remember { mutableStateOf<List<HistoryEntity>>(emptyList()) }
     var intervalMinutes by remember { mutableStateOf(15) }
-    var customSites by remember { mutableStateOf(NetworkChecker.getSites(LocalContext.current)) }
-
+    
+    var customSites by remember { 
+        mutableStateOf(NetworkChecker.getSites(context)) 
+    }
+    
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
     val historyRepo = remember { HistoryRepository(context) }
     val prefs = context.getSharedPreferences("whitelist_prefs", Context.MODE_PRIVATE)
+    
 
     LaunchedEffect(Unit) {
         intervalMinutes = prefs.getInt("interval_minutes", 15)
