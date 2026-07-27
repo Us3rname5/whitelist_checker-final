@@ -97,12 +97,15 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val status = checkConnectionStatus(this)
-            // Прямой when внутри setContent (гарантированно @Composable)
-            when (status) {
-                ConnectionStatus.NO_SIM -> NoSimScreen()
-                ConnectionStatus.NO_INTERNET -> InfoScreen("проверка недоступна", "нет интернет-соединения")
-                ConnectionStatus.WIFI_AND_MOBILE -> InfoScreen("проверка недоступна", "отключите Wi-Fi")
-                ConnectionStatus.MOBILE_ONLY -> MainScreen()
+            // Явно разделяем ветки через if-else, чтобы компилятор точно понимал контекст
+            if (status == ConnectionStatus.NO_SIM) {
+                NoSimScreen()
+            } else if (status == ConnectionStatus.NO_INTERNET) {
+                InfoScreen("проверка недоступна", "нет интернет-соединения")
+            } else if (status == ConnectionStatus.WIFI_AND_MOBILE) {
+                InfoScreen("проверка недоступна", "отключите Wi-Fi")
+            } else {
+                MainScreen()
             }
         }
     }
