@@ -95,15 +95,10 @@ class MainActivity : ComponentActivity() {
             window.statusBarColor = android.graphics.Color.BLACK
         }
 
-        val connectionStatus = checkConnectionStatus(this)
-
         setContent {
-            when (connectionStatus) {
-                ConnectionStatus.NO_SIM -> NoSimScreen()
-                ConnectionStatus.NO_INTERNET -> InfoScreen("проверка недоступна", "нет интернет-соединения")
-                ConnectionStatus.WIFI_AND_MOBILE -> InfoScreen("проверка недоступна", "отключите Wi-Fi")
-                ConnectionStatus.MOBILE_ONLY -> MainScreen()
-            }
+            // Получаем статус внутри @Composable контекста
+            val connectionStatus = remember { checkConnectionStatus(this) }
+            AppContent(connectionStatus)
         }
     }
 
@@ -139,9 +134,22 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// ----------------------------------------------
-// ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
-// ----------------------------------------------
+// =============================================
+// КОНТРОЛЛЕР ЭКРАНОВ (ОБЁРТКА)
+// =============================================
+@Composable
+fun AppContent(connectionStatus: ConnectionStatus) {
+    when (connectionStatus) {
+        ConnectionStatus.NO_SIM -> NoSimScreen()
+        ConnectionStatus.NO_INTERNET -> InfoScreen("проверка недоступна", "нет интернет-соединения")
+        ConnectionStatus.WIFI_AND_MOBILE -> InfoScreen("проверка недоступна", "отключите Wi-Fi")
+        ConnectionStatus.MOBILE_ONLY -> MainScreen()
+    }
+}
+
+// =============================================
+// ОСТАЛЬНЫЕ ФУНКЦИИ БЕЗ ИЗМЕНЕНИЙ
+// =============================================
 
 @Composable
 fun NoSimScreen() {
@@ -182,7 +190,6 @@ fun InfoScreen(title: String, message: String) {
 
 @Composable
 fun MainScreen() {
-    // ✅ Используем Accompanist Permissions
     val permissions = rememberMultiplePermissionsState(
         permissions = listOf(
             Manifest.permission.ACCESS_FINE_LOCATION,
