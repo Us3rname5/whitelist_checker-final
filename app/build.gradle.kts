@@ -48,7 +48,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
-    implementation("androidx.compose.foundation:foundation-permissions:1.6.2")
+    // ✅ Исправленная зависимость для разрешений
+    implementation("com.google.accompanist:accompanist-permissions:0.34.0")
 
     // Room
     implementation("androidx.room:room-runtime:2.6.1")
