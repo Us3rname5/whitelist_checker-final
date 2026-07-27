@@ -37,9 +37,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import androidx.compose.foundation.permissions.*
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.google.android.gms.location.LocationServices
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -85,6 +86,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    @OptIn(ExperimentalPermissionsApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -180,12 +182,17 @@ fun InfoScreen(title: String, message: String) {
 
 @Composable
 fun MainScreen() {
-    val locationPermissionState = rememberPermissionState(Manifest.permission.ACCESS_FINE_LOCATION)
-    val notificationPermissionState = rememberPermissionState(Manifest.permission.POST_NOTIFICATIONS)
+    // ✅ Используем Accompanist Permissions
+    val permissions = rememberMultiplePermissionsState(
+        permissions = listOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.POST_NOTIFICATIONS
+        )
+    )
 
     var resultText by remember { mutableStateOf("") }
     var isRestricted by remember { mutableStateOf<Boolean?>(null) }
-    var notificationEnabled by remember { mutableStateOf(false) } // ✅ добавлено
+    var notificationEnabled by remember { mutableStateOf(false) }
     var serviceStatuses by remember { mutableStateOf<List<ServiceStatus>>(emptyList()) }
     var locationInfo by remember { mutableStateOf("") }
     var isChecking by remember { mutableStateOf(false) }
@@ -195,7 +202,7 @@ fun MainScreen() {
     var showSitesDialog by remember { mutableStateOf(false) }
     var historyList by remember { mutableStateOf<List<HistoryEntity>>(emptyList()) }
     var intervalMinutes by remember { mutableStateOf(15) }
-    var customSites by remember { mutableStateOf(NetworkChecker.getSites(LocalContext.current)) } // ✅ добавлено
+    var customSites by remember { mutableStateOf(NetworkChecker.getSites(LocalContext.current)) }
 
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -320,14 +327,9 @@ fun MainScreen() {
                                         isRestricted = null
                                         addLog("▶ начата проверка")
 
-                                        if (!locationPermissionState.hasPermission) {
-                                            locationPermissionState.launchPermissionRequest()
-                                            isChecking = false
-                                            return@launch
-                                        }
-
-                                        if (!notificationPermissionState.hasPermission) {
-                                            notificationPermissionState.launchPermissionRequest()
+                                        if (!permissions.allPermissionsGranted) {
+                                            permissions.launchMultiplePermissionRequest()
+                                            addLog("⏸ запрошены разрешения")
                                             isChecking = false
                                             return@launch
                                         }
