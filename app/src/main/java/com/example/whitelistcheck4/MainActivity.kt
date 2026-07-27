@@ -96,9 +96,8 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            // Получаем статус внутри @Composable контекста
-            val connectionStatus = remember { checkConnectionStatus(this) }
-            AppContent(connectionStatus)
+            val status = remember { checkConnectionStatus(this) }
+            MainActivityScreen(status)
         }
     }
 
@@ -135,10 +134,10 @@ class MainActivity : ComponentActivity() {
 }
 
 // =============================================
-// КОНТРОЛЛЕР ЭКРАНОВ (ОБЁРТКА)
+// ЕДИНАЯ @Composable ФУНКЦИЯ ДЛЯ ВСЕХ ЭКРАНОВ
 // =============================================
 @Composable
-fun AppContent(connectionStatus: ConnectionStatus) {
+fun MainActivityScreen(connectionStatus: ConnectionStatus) {
     when (connectionStatus) {
         ConnectionStatus.NO_SIM -> NoSimScreen()
         ConnectionStatus.NO_INTERNET -> InfoScreen("проверка недоступна", "нет интернет-соединения")
@@ -148,9 +147,8 @@ fun AppContent(connectionStatus: ConnectionStatus) {
 }
 
 // =============================================
-// ОСТАЛЬНЫЕ ФУНКЦИИ БЕЗ ИЗМЕНЕНИЙ
+// ВСПОМОГАТЕЛЬНЫЕ ЭКРАНЫ
 // =============================================
-
 @Composable
 fun NoSimScreen() {
     val context = LocalContext.current
@@ -188,6 +186,9 @@ fun InfoScreen(title: String, message: String) {
     }
 }
 
+// =============================================
+// ГЛАВНЫЙ ЭКРАН
+// =============================================
 @Composable
 fun MainScreen() {
     val permissions = rememberMultiplePermissionsState(
