@@ -798,7 +798,7 @@ fun HistoryScreen(activity: MainActivity, historyRepo: HistoryRepository) {
 }
 
 // =============================================
-// ЭКРАН НАСТРОЕК
+// ЭКРАН НАСТРОЕК (ИСПРАВЛЕННЫЙ)
 // =============================================
 @Composable
 fun SettingsScreen(historyRepo: HistoryRepository) {
@@ -819,17 +819,282 @@ fun SettingsScreen(historyRepo: HistoryRepository) {
     var newSiteName by remember { mutableStateOf("") }
     var newSiteUrl by remember { mutableStateOf("") }
 
-    Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp)
-    ) {
-        Text(
-            "настройки",
-            fontSize = 28.sp,
-            fontWeight = FontWeight.ExtraBold,
-            color = Color.White
-        )
-        Spacer(modifier = Modifier.height(24.dp))
+    // ОБЕРНУЛИ ВСЁ В BOX, ЧТОБЫ РАБОТАЛ align(Alignment.BottomEnd)
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(24.dp)
+        ) {
+            Text(
+                "настройки",
+                fontSize = 28.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color.White
+            )
+            Spacer(modifier = Modifier.height(24.dp))
 
+            // Уведомления
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Notifications,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            "push-уведомления",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Text(
+                            "оповещения об изменениях",
+                            fontSize = 12.sp,
+                            color = Color.White.copy(alpha = 0.5f)
+                        )
+                    }
+                    Switch(
+                        checked = notificationEnabled,
+                        onCheckedChange = { enabled ->
+                            notificationEnabled = enabled
+                            prefs.edit().putBoolean("notifications_enabled", enabled).apply()
+                            if (enabled) {
+                                NotificationWorker.schedule(context)
+                                Toast.makeText(context, "уведомления включены", Toast.LENGTH_SHORT).show()
+                            } else {
+                                NotificationWorker.cancel(context)
+                                Toast.makeText(context, "уведомления отключены", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color(0xFF4CAF50),
+                            checkedTrackColor = Color(0xFF4CAF50).copy(alpha = 0.3f),
+                            uncheckedThumbColor = Color.Gray,
+                            uncheckedTrackColor = Color.Gray.copy(alpha = 0.3f)
+                        )
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Интервал проверки
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Default.Schedule,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column {
+                            Text(
+                                "интервал проверки",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Text(
+                                "каждые $intervalMinutes минут",
+                                fontSize = 12.sp,
+                                color = Color.White.copy(alpha = 0.5f)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Slider(
+                        value = intervalMinutes.toFloat(),
+                        onValueChange = { newValue ->
+                            intervalMinutes = newValue.toInt()
+                            prefs.edit().putInt("interval_minutes", intervalMinutes).apply()
+                            NotificationWorker.reschedule(context)
+                        },
+                        valueRange = 5f..60f,
+                        steps = 10,
+                        colors = SliderDefaults.colors(
+                            thumbColor = Color(0xFF4CAF50),
+                            activeTrackColor = Color(0xFF4CAF50),
+                            inactiveTrackColor = Color(0xFF333333)
+                        )
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("5 мин", fontSize = 10.sp, color = Color.White.copy(alpha = 0.4f))
+                        Text("60 мин", fontSize = 10.sp, color = Color.White.copy(alpha = 0.4f))
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Список сайтов
+            Card(
+                modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(
+                            Icons.Default.Web,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(
+                            "проверяемые сайты",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.heightIn(max = 300.dp)
+                    ) {
+                        items(customSites) { site ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        site.first,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                    Text(
+                                        site.second,
+                                        fontSize = 11.sp,
+                                        color = Color.White.copy(alpha = 0.5f),
+                                        maxLines = 1
+                                    )
+                                }
+                                IconButton(onClick = {
+                                    customSites = customSites.filter { it != site }
+                                    NetworkChecker.saveSites(context, customSites)
+                                    Toast.makeText(context, "сайт удалён", Toast.LENGTH_SHORT).show()
+                                }) {
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        contentDescription = "Удалить",
+                                        tint = Color(0xFFE53935),
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // FAB для добавления сайта (теперь align работает, так как мы внутри Box)
+        FloatingActionButton(
+            onClick = { showAddSiteDialog = true },
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(24.dp),
+            containerColor = Color(0xFF4CAF50),
+            contentColor = Color.White,
+            shape = CircleShape
+        ) {
+            Icon(Icons.Default.Add, contentDescription = "Добавить сайт")
+        }
+    }
+
+    // Диалог добавления сайта
+    if (showAddSiteDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddSiteDialog = false },
+            title = { Text("добавить сайт", color = Color.White) },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = newSiteName,
+                        onValueChange = { newSiteName = it },
+                        label = { Text("название", color = Color.White.copy(alpha = 0.5f)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF4CAF50),
+                            unfocusedBorderColor = Color.White.copy(alpha = 0.3f),
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        )
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = newSiteUrl,
+                        onValueChange = { newSiteUrl = it },
+                        label = { Text("URL", color = Color.White.copy(alpha = 0.5f)) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Color(0xFF4CAF50),
+                            unfocusedBorderColor = Color.White.copy(alpha = 0.3f),
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (newSiteName.isNotBlank() && newSiteUrl.isNotBlank()) {
+                        val newSite = newSiteName.trim() to newSiteUrl.trim()
+                        if (customSites.none { it.first == newSite.first }) {
+                            customSites = customSites + newSite
+                            NetworkChecker.saveSites(context, customSites)
+                            Toast.makeText(context, "сайт добавлен", Toast.LENGTH_SHORT).show()
+                            newSiteName = ""
+                            newSiteUrl = ""
+                            showAddSiteDialog = false
+                        } else {
+                            Toast.makeText(context, "такой сайт уже есть", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }) {
+                    Text("добавить", color = Color(0xFF4CAF50))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showAddSiteDialog = false
+                    newSiteName = ""
+                    newSiteUrl = ""
+                }) {
+                    Text("отмена", color = Color.White)
+                }
+            },
+            containerColor = Color(0xFF1A1A1A)
+        )
+    }
+}
         // Уведомления
         Card(
             modifier = Modifier.fillMaxWidth(),
