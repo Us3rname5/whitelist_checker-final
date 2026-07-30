@@ -131,19 +131,25 @@ class MainActivity : ComponentActivity() {
 }
 
 // =============================================
-// APP NAVIGATION (ОПТИМИЗИРОВАННАЯ)
+// APP NAVIGATION
 // =============================================
 @Composable
 fun App(activity: MainActivity) {
     var currentScreen by remember { mutableStateOf(Screen.MAIN) }
     val context = LocalContext.current
     val historyRepo = remember { HistoryRepository(context) }
+    val prefs = context.getSharedPreferences("whitelist_prefs", Context.MODE_PRIVATE)
 
-    // Общие логи для всего приложения
     var appLogs by remember { mutableStateOf<List<String>>(emptyList()) }
-    
-    // Состояние ограничений для цвета островка
     var isRestricted by remember { mutableStateOf<Boolean?>(null) }
+    
+    // Онбординг
+    var onboardingStep by remember { 
+        mutableStateOf(
+            if (prefs.getBoolean("onboarding_completed", false)) OnboardingStep.NONE 
+            else OnboardingStep.WELCOME
+        ) 
+    }
 
     Surface(modifier = Modifier.fillMaxSize(), color = Color.Black) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -177,12 +183,314 @@ fun App(activity: MainActivity) {
                 isRestricted = isRestricted,
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp)
             )
+
+            // Онбординг
+            if (onboardingStep != OnboardingStep.NONE) {
+                OnboardingDialog(
+                    step = onboardingStep,
+                    onComplete = {
+                        prefs.edit().putBoolean("onboarding_completed", true).apply()
+                        onboardingStep = OnboardingStep.NONE
+                    },
+                    onNext = { onboardingStep = it }
+                )
+            }
         }
     }
 }
 
 // =============================================
-// FLOATING NAVIGATION BAR (С ЦВЕТАМИ)
+// ONBOARDING
+// =============================================
+enum class OnboardingStep {
+    WELCOME,
+    NOTIFICATION_REASON,
+    NOTIFICATION_PERMISSION,
+    LOCATION_REASON,
+    LOCATION_PERMISSION,
+    THANKS
+}
+
+@OptIn(ExperimentalPermissionsApi::class)
+@Composable
+fun OnboardingDialog(
+    step: OnboardingStep,
+    onComplete: () -> Unit,
+    onNext: (OnboardingStep) -> Unit
+) {
+    val context = LocalContext.current
+    val permissions = rememberMultiplePermissionsState(
+        permissions = listOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION,
+            Manifest.permission.POST_NOTIFICATIONS
+        )
+    )
+
+    Dialog(onDismissRequest = { /* нельзя закрыть */ }) {
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A))
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                when (step) {
+                    OnboardingStep.WELCOME -> {
+                        Icon(
+                            Icons.Default.CellTower,
+                            null,
+                            tint = Color(0xFF3B82F6),
+                            modifier = Modifier.size(64.dp)
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            "whitelist checker",
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            "приложение проверяет доступность зарубежных сайтов через мобильный интернет.\n\nесли российские сервисы работают, а зарубежные нет — значит, в вашей сети действуют ограничения.",
+                            fontSize = 14.sp,
+                            color = Color.White.copy(alpha = 0.8f),
+                            textAlign = TextAlign.Center,
+                            lineHeight = 20.sp
+                        )
+                        Spacer(Modifier.height(24.dp))
+                        Button(
+                            onClick = { onNext(OnboardingStep.NOTIFICATION_REASON) },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6)),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("далее", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    OnboardingStep.NOTIFICATION_REASON -> {
+                        Icon(
+                            Icons.Default.Notifications,
+                            null,
+                            tint = Color(0xFF3B82F6),
+                            modifier = Modifier.size(64.dp)
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            "зачем нужны уведомления?",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            "мы будем отправлять вам уведомления, когда статус ограничений изменится.\n\nнапример, если ограничения включатся или снимутся — вы сразу об этом узнаете.",
+                            fontSize = 14.sp,
+                            color = Color.White.copy(alpha = 0.8f),
+                            textAlign = TextAlign.Center,
+                            lineHeight = 20.sp
+                        )
+                        Spacer(Modifier.height(24.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = { onNext(OnboardingStep.LOCATION_REASON) },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("пропустить", fontSize = 12.sp)
+                            }
+                            Button(
+                                onClick = {
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                        permissions.launchMultiplePermissionRequest()
+                                    }
+                                    onNext(OnboardingStep.NOTIFICATION_PERMISSION)
+                                },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6)),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("разрешить", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    OnboardingStep.NOTIFICATION_PERMISSION -> {
+                        Icon(
+                            if (permissions.permissions.any { it.status == androidx.compose.runtime.getValue(androidx.compose.runtime.snapshots.SnapshotStateObserver::class.java.getDeclaredMethod("observeReads", androidx.compose.runtime.MutableSnapshot::class.java, kotlin.Function1::class.java, kotlin.Function1::class.java).let { method -> method.isAccessible = true; method.invoke(null, null, {}, {}) } == true) }) 
+                                Icons.Default.CheckCircle 
+                            else Icons.Default.Warning,
+                            null,
+                            tint = if (permissions.permissions.all { it.status == androidx.compose.runtime.getValue(androidx.compose.runtime.snapshots.SnapshotStateObserver::class.java.getDeclaredMethod("observeReads", androidx.compose.runtime.MutableSnapshot::class.java, kotlin.Function1::class.java, kotlin.Function1::class.java).let { method -> method.isAccessible = true; method.invoke(null, null, {}, {}) } == true) }) 
+                                Color(0xFF4CAF50) 
+                            else Color(0xFFFFA726),
+                            modifier = Modifier.size(64.dp)
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            "разрешение на уведомления",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            if (permissions.permissions.any { it.permission == Manifest.permission.POST_NOTIFICATIONS && it.status == androidx.compose.runtime.getValue(androidx.compose.runtime.snapshots.SnapshotStateObserver::class.java.getDeclaredMethod("observeReads", androidx.compose.runtime.MutableSnapshot::class.java, kotlin.Function1::class.java, kotlin.Function1::class.java).let { method -> method.isAccessible = true; method.invoke(null, null, {}, {}) } == true) })
+                                "отлично! теперь вы будете получать уведомления об изменениях."
+                            else
+                                "разрешение не получено. вы можете включить уведомления позже в настройках.",
+                            fontSize = 14.sp,
+                            color = Color.White.copy(alpha = 0.8f),
+                            textAlign = TextAlign.Center,
+                            lineHeight = 20.sp
+                        )
+                        Spacer(Modifier.height(24.dp))
+                        Button(
+                            onClick = { onNext(OnboardingStep.LOCATION_REASON) },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6)),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("далее", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    OnboardingStep.LOCATION_REASON -> {
+                        Icon(
+                            Icons.Default.LocationOn,
+                            null,
+                            tint = Color(0xFF3B82F6),
+                            modifier = Modifier.size(64.dp)
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            "зачем нужна геолокация?",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            "мы сохраняем координаты каждой проверки, чтобы вы могли отследить, где именно были обнаружены ограничения.\n\nпожалуйста, включите точную геолокацию и выберите \"всегда\" или \"при использовании приложения\".",
+                            fontSize = 14.sp,
+                            color = Color.White.copy(alpha = 0.8f),
+                            textAlign = TextAlign.Center,
+                            lineHeight = 20.sp
+                        )
+                        Spacer(Modifier.height(24.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = { onNext(OnboardingStep.THANKS) },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("пропустить", fontSize = 12.sp)
+                            }
+                            Button(
+                                onClick = {
+                                    permissions.launchMultiplePermissionRequest()
+                                    onNext(OnboardingStep.LOCATION_PERMISSION)
+                                },
+                                modifier = Modifier.weight(1f),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6)),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Text("разрешить", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    OnboardingStep.LOCATION_PERMISSION -> {
+                        Icon(
+                            Icons.Default.CheckCircle,
+                            null,
+                            tint = Color(0xFF4CAF50),
+                            modifier = Modifier.size(64.dp)
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            "геолокация разрешена",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            "отлично! теперь приложение будет сохранять местоположение каждой проверки.",
+                            fontSize = 14.sp,
+                            color = Color.White.copy(alpha = 0.8f),
+                            textAlign = TextAlign.Center,
+                            lineHeight = 20.sp
+                        )
+                        Spacer(Modifier.height(24.dp))
+                        Button(
+                            onClick = { onNext(OnboardingStep.THANKS) },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6)),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("далее", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    OnboardingStep.THANKS -> {
+                        Icon(
+                            Icons.Default.EmojiEvents,
+                            null,
+                            tint = Color(0xFFFFA726),
+                            modifier = Modifier.size(64.dp)
+                        )
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            "спасибо за понимание!",
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(Modifier.height(12.dp))
+                        Text(
+                            "всё готово. приятного пользования!",
+                            fontSize = 16.sp,
+                            color = Color.White.copy(alpha = 0.8f),
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(Modifier.height(24.dp))
+                        Button(
+                            onClick = onComplete,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFA726)),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("начать", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    OnboardingStep.NONE -> {}
+                }
+            }
+        }
+    }
+}
+
+// =============================================
+// FLOATING NAVIGATION BAR
 // =============================================
 @Composable
 fun FloatingNavigationBar(
@@ -198,7 +506,6 @@ fun FloatingNavigationBar(
         Triple(Icons.Default.Info, "информация", Screen.INFO)
     )
 
-    // Цвет активной вкладки в зависимости от экрана
     val activeColor = when (currentScreen) {
         Screen.MAIN -> when (isRestricted) {
             true -> Color.Black
@@ -207,7 +514,7 @@ fun FloatingNavigationBar(
         }
         Screen.HISTORY -> Color(0xFF3B82F6)
         Screen.SETTINGS -> Color(0xFF4CAF50)
-        Screen.INFO -> Color(0xFF9C27B0)
+        Screen.INFO -> Color(0xFFFF9800)
     }
 
     Box(
@@ -255,7 +562,7 @@ fun FloatingNavigationBar(
 }
 
 // =============================================
-// MAIN SCREEN (ОПТИМИЗИРОВАННАЯ)
+// MAIN SCREEN
 // =============================================
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
@@ -270,18 +577,6 @@ fun MainScreen(
     val scope = rememberCoroutineScope()
     val prefs = context.getSharedPreferences("whitelist_prefs", Context.MODE_PRIVATE)
 
-    val permissions = rememberMultiplePermissionsState(
-        permissions = listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.POST_NOTIFICATIONS)
-    )
-
-    // Запрос разрешений при первом открытии
-    LaunchedEffect(Unit) {
-        if (!permissions.allPermissionsGranted) {
-            delay(500)
-            permissions.launchMultiplePermissionRequest()
-        }
-    }
-
     var isChecking by remember { mutableStateOf(false) }
     var resultText by remember { mutableStateOf("") }
     var serviceStatuses by remember { mutableStateOf<List<ServiceStatus>>(emptyList()) }
@@ -294,9 +589,9 @@ fun MainScreen(
         onStateUpdate(newLogs, isRestricted)
     }
 
-    // Оптимизированная анимация пульсации
+    // Синхронная пульсация всех кругов
     val pulseScale by animateFloatAsState(
-        targetValue = if (isChecking) 1.08f else 1.0f,
+        targetValue = if (isChecking) 1.08f else 1.03f,
         animationSpec = infiniteRepeatable(
             animation = tween(1500, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
@@ -304,7 +599,16 @@ fun MainScreen(
         label = "pulseScale"
     )
 
-    // Эффект радара с переменной скоростью
+    val pulseAlpha by animateFloatAsState(
+        targetValue = if (isChecking) 0.25f else 0.15f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulseAlpha"
+    )
+
+    // Эффект радара: быстрый старт, потом медленное вращение
     val radarAngle by animateFloatAsState(
         targetValue = 360f,
         animationSpec = infiniteRepeatable(
@@ -317,7 +621,7 @@ fun MainScreen(
         label = "radarAngle"
     )
 
-    // Анимация расширения кругов
+    // Анимация расширения кругов до краёв (но не на весь экран)
     val circleExpandScale by animateFloatAsState(
         targetValue = if (isChecking) 1.5f else 1.0f,
         animationSpec = tween(800, easing = FastOutSlowInEasing),
@@ -370,20 +674,20 @@ fun MainScreen(
 
             // Круглая кнопка с анимацией
             Box(modifier = Modifier.size(280.dp), contentAlignment = Alignment.Center) {
-                // Пульсирующие круги
+                // Пульсирующие круги (все синхронно)
                 Box(
                     modifier = Modifier
                         .size(260.dp)
                         .scale(pulseScale * circleExpandScale)
                         .clip(CircleShape)
-                        .background(textColor.copy(alpha = 0.1f))
+                        .background(textColor.copy(alpha = pulseAlpha * 0.5f))
                 )
                 Box(
                     modifier = Modifier
                         .size(220.dp)
                         .scale(pulseScale * circleExpandScale)
                         .clip(CircleShape)
-                        .background(textColor.copy(alpha = 0.15f))
+                        .background(textColor.copy(alpha = pulseAlpha))
                 )
                 
                 // Маленький круг с эффектом радара
@@ -392,10 +696,10 @@ fun MainScreen(
                         .size(180.dp)
                         .scale(pulseScale)
                         .clip(CircleShape)
-                        .background(textColor.copy(alpha = 0.2f)),
+                        .background(textColor.copy(alpha = pulseAlpha * 1.5f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    // Вращающаяся дуга (радар) - оптимизированный Canvas
+                    // Вращающаяся дуга (радар)
                     Canvas(modifier = Modifier.size(160.dp)) {
                         val radius = size.minDimension / 2 - 10.dp.toPx()
                         drawArc(
@@ -409,12 +713,12 @@ fun MainScreen(
                         )
                     }
                     
-                    // Центральная кнопка
+                    // Центральная кнопка (белая)
                     Box(
                         modifier = Modifier
                             .size(140.dp)
                             .clip(CircleShape)
-                            .background(backgroundColor)
+                            .background(Color.White)
                             .clickable(enabled = !isChecking && connectionError == null) {
                                 val connStatus = activity.checkConnectionStatus(context)
                                 when (connStatus) {
@@ -432,6 +736,10 @@ fun MainScreen(
                                         
                                         scope.launch {
                                             try {
+                                                val permissions = rememberMultiplePermissionsState(
+                                                    permissions = listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.POST_NOTIFICATIONS)
+                                                )
+                                                
                                                 if (!permissions.allPermissionsGranted) {
                                                     permissions.launchMultiplePermissionRequest()
                                                     addLog(" запрошены разрешения")
@@ -489,9 +797,9 @@ fun MainScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.CellTower, null, tint = textColor, modifier = Modifier.size(48.dp))
+                            Icon(Icons.Default.CellTower, null, tint = Color.Black, modifier = Modifier.size(48.dp))
                             Spacer(Modifier.height(4.dp))
-                            Text(if (isChecking) "..." else "проверить", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = textColor)
+                            Text(if (isChecking) "..." else "проверить", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.Black)
                         }
                     }
                 }
@@ -600,7 +908,6 @@ fun HistoryScreen(activity: MainActivity, historyRepo: HistoryRepository, appLog
         Text("${historyList.size} записей", fontSize = 12.sp, color = Color.White.copy(alpha = 0.5f))
         Spacer(Modifier.height(16.dp))
 
-        // Переключатель История/Логи
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Box(modifier = Modifier.weight(1f).clip(RoundedCornerShape(20.dp)).background(if (showTab == 0) Color(0xFF3B82F6) else Color(0xFF1A1A1A)).clickable { showTab = 0 }.padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
                 Text("история", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (showTab == 0) Color.White else Color.Gray)
@@ -848,7 +1155,7 @@ fun SettingsScreen(historyRepo: HistoryRepository) {
 }
 
 // =============================================
-// INFO SCREEN
+// INFO SCREEN (ОРАНЖЕВЫЙ)
 // =============================================
 @Composable
 fun InfoScreen() {
@@ -873,11 +1180,11 @@ fun InfoScreen() {
 
         Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)), shape = RoundedCornerShape(16.dp)) {
             Column(modifier = Modifier.padding(20.dp)) {
-                Text("как использовать", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Text("как использовать?", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 Spacer(Modifier.height(12.dp))
                 listOf("отключите Wi-Fi и VPN", "нажмите кнопку \"проверить\"", "дождитесь результатов", "просматривайте историю проверок").forEachIndexed { index, step ->
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
-                        Text("${index + 1}.", fontSize = 12.sp, color = Color(0xFF3B82F6), fontWeight = FontWeight.Bold)
+                        Text("${index + 1}.", fontSize = 12.sp, color = Color(0xFFFF9800), fontWeight = FontWeight.Bold)
                         Spacer(Modifier.width(8.dp))
                         Text(step, fontSize = 12.sp, color = Color.White.copy(alpha = 0.8f))
                     }
