@@ -20,4 +20,6 @@ class HistoryRepository(private val context: Context) {
     suspend fun getHistory(): List<HistoryEntity> = dao.getLast50()
 
     suspend fun clearHistory() = dao.clearAll()
+
+    suspend fun deleteEntry(id: Int) = dao.deleteEntry(id)
 }
