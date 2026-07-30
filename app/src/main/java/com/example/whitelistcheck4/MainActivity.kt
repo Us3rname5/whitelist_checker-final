@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.core.content.FileProvider
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.PermissionStatus
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.google.android.gms.location.LocationServices
 import kotlinx.coroutines.delay
@@ -55,9 +56,8 @@ import java.util.*
 // ENUMS
 // =============================================
 enum class Screen { MAIN, HISTORY, SETTINGS, INFO }
-enum class ConnectionStatus {
-    NO_SIM, NO_INTERNET, WIFI_AND_MOBILE, MOBILE_ONLY, VPN_ACTIVE
-}
+enum class ConnectionStatus { NO_SIM, NO_INTERNET, WIFI_AND_MOBILE, MOBILE_ONLY, VPN_ACTIVE }
+enum class OnboardingStep { WELCOME, NOTIFICATION_REASON, NOTIFICATION_PERMISSION, LOCATION_REASON, LOCATION_PERMISSION, THANKS, NONE }
 
 // =============================================
 // MAIN ACTIVITY
@@ -68,16 +68,13 @@ class MainActivity : ComponentActivity() {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
         
-        val hasSim = tm.simState != TelephonyManager.SIM_STATE_ABSENT && 
-                     tm.simState != TelephonyManager.SIM_STATE_UNKNOWN
+        val hasSim = tm.simState != TelephonyManager.SIM_STATE_ABSENT && tm.simState != TelephonyManager.SIM_STATE_UNKNOWN
         if (!hasSim) return ConnectionStatus.NO_SIM
         
         val activeNetwork = cm.activeNetwork ?: return ConnectionStatus.NO_INTERNET
         val caps = cm.getNetworkCapabilities(activeNetwork) ?: return ConnectionStatus.NO_INTERNET
         
-        if (caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) {
-            return ConnectionStatus.VPN_ACTIVE
-        }
+        if (caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) return ConnectionStatus.VPN_ACTIVE
         
         val isInternet = caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
         if (!isInternet) return ConnectionStatus.NO_INTERNET
@@ -96,9 +93,7 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             window.statusBarColor = android.graphics.Color.BLACK
         }
-        setContent {
-            App(this)
-        }
+        setContent { App(this) }
     }
 
     fun exportHistory(context: Context, repo: HistoryRepository) {
@@ -109,8 +104,7 @@ class MainActivity : ComponentActivity() {
                 return@launch
             }
             val sb = StringBuilder()
-            sb.append("whitelist checker - история проверок\n")
-            sb.append("=====================================\n\n")
+            sb.append("whitelist checker - история проверок\n=====================================\n\n")
             list.forEach { entry ->
                 val date = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(entry.timestamp))
                 sb.append("$date | ${if (entry.isRestricted) "ОГРАНИЧЕНИЯ" else "СВОБОДА"}\n")
@@ -143,12 +137,8 @@ fun App(activity: MainActivity) {
     var appLogs by remember { mutableStateOf<List<String>>(emptyList()) }
     var isRestricted by remember { mutableStateOf<Boolean?>(null) }
     
-    // Онбординг
     var onboardingStep by remember { 
-        mutableStateOf(
-            if (prefs.getBoolean("onboarding_completed", false)) OnboardingStep.NONE 
-            else OnboardingStep.WELCOME
-        ) 
+        mutableStateOf(if (prefs.getBoolean("onboarding_completed", false)) OnboardingStep.NONE else OnboardingStep.WELCOME) 
     }
 
     Surface(modifier = Modifier.fillMaxSize(), color = Color.Black) {
@@ -157,11 +147,9 @@ fun App(activity: MainActivity) {
                 targetState = currentScreen,
                 transitionSpec = {
                     if (targetState.ordinal > initialState.ordinal) {
-                        slideInHorizontally(initialOffsetX = { it }) + fadeIn() togetherWith
-                        slideOutHorizontally(targetOffsetX = { -it }) + fadeOut()
+                        slideInHorizontally(initialOffsetX = { it }) + fadeIn() togetherWith slideOutHorizontally(targetOffsetX = { -it }) + fadeOut()
                     } else {
-                        slideInHorizontally(initialOffsetX = { -it }) + fadeIn() togetherWith
-                        slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
+                        slideInHorizontally(initialOffsetX = { -it }) + fadeIn() togetherWith slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
                     }
                 },
                 label = "screen_transition"
@@ -184,7 +172,6 @@ fun App(activity: MainActivity) {
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp)
             )
 
-            // Онбординг
             if (onboardingStep != OnboardingStep.NONE) {
                 OnboardingDialog(
                     step = onboardingStep,
@@ -200,288 +187,84 @@ fun App(activity: MainActivity) {
 }
 
 // =============================================
-// ONBOARDING
+// ONBOARDING DIALOG
 // =============================================
-enum class OnboardingStep {
-    WELCOME,
-    NOTIFICATION_REASON,
-    NOTIFICATION_PERMISSION,
-    LOCATION_REASON,
-    LOCATION_PERMISSION,
-    THANKS
-}
-
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
-fun OnboardingDialog(
-    step: OnboardingStep,
-    onComplete: () -> Unit,
-    onNext: (OnboardingStep) -> Unit
-) {
-    val context = LocalContext.current
+fun OnboardingDialog(step: OnboardingStep, onComplete: () -> Unit, onNext: (OnboardingStep) -> Unit) {
     val permissions = rememberMultiplePermissionsState(
-        permissions = listOf(
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.ACCESS_COARSE_LOCATION,
-            Manifest.permission.POST_NOTIFICATIONS
-        )
+        permissions = listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.POST_NOTIFICATIONS)
     )
 
-    Dialog(onDismissRequest = { /* нельзя закрыть */ }) {
-        Card(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A))
-        ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
+    val notificationsGranted = permissions.permissions.any { it.permission == Manifest.permission.POST_NOTIFICATIONS && it.status == PermissionStatus.Granted }
+    val locationGranted = permissions.permissions.any { it.permission == Manifest.permission.ACCESS_FINE_LOCATION && it.status == PermissionStatus.Granted }
+
+    Dialog(onDismissRequest = { }) {
+        Card(modifier = Modifier.fillMaxWidth().padding(16.dp), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A))) {
+            Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 when (step) {
                     OnboardingStep.WELCOME -> {
-                        Icon(
-                            Icons.Default.CellTower,
-                            null,
-                            tint = Color(0xFF3B82F6),
-                            modifier = Modifier.size(64.dp)
-                        )
+                        Icon(Icons.Default.CellTower, null, tint = Color(0xFF3B82F6), modifier = Modifier.size(64.dp))
                         Spacer(Modifier.height(16.dp))
-                        Text(
-                            "whitelist checker",
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White,
-                            textAlign = TextAlign.Center
-                        )
+                        Text("whitelist checker", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, textAlign = TextAlign.Center)
                         Spacer(Modifier.height(12.dp))
-                        Text(
-                            "приложение проверяет доступность зарубежных сайтов через мобильный интернет.\n\nесли российские сервисы работают, а зарубежные нет — значит, в вашей сети действуют ограничения.",
-                            fontSize = 14.sp,
-                            color = Color.White.copy(alpha = 0.8f),
-                            textAlign = TextAlign.Center,
-                            lineHeight = 20.sp
-                        )
+                        Text("приложение проверяет доступность зарубежных сайтов через мобильный интернет.\n\nесли российские сервисы работают, а зарубежные нет — значит, в вашей сети действуют ограничения.", fontSize = 14.sp, color = Color.White.copy(alpha = 0.8f), textAlign = TextAlign.Center, lineHeight = 20.sp)
                         Spacer(Modifier.height(24.dp))
-                        Button(
-                            onClick = { onNext(OnboardingStep.NOTIFICATION_REASON) },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6)),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
+                        Button(onClick = { onNext(OnboardingStep.NOTIFICATION_REASON) }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6)), shape = RoundedCornerShape(12.dp)) {
                             Text("далее", fontSize = 14.sp, fontWeight = FontWeight.Bold)
                         }
                     }
-
                     OnboardingStep.NOTIFICATION_REASON -> {
-                        Icon(
-                            Icons.Default.Notifications,
-                            null,
-                            tint = Color(0xFF3B82F6),
-                            modifier = Modifier.size(64.dp)
-                        )
+                        Icon(Icons.Default.Notifications, null, tint = Color(0xFF3B82F6), modifier = Modifier.size(64.dp))
                         Spacer(Modifier.height(16.dp))
-                        Text(
-                            "зачем нужны уведомления?",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            textAlign = TextAlign.Center
-                        )
+                        Text("зачем нужны уведомления?", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White, textAlign = TextAlign.Center)
                         Spacer(Modifier.height(12.dp))
-                        Text(
-                            "мы будем отправлять вам уведомления, когда статус ограничений изменится.\n\nнапример, если ограничения включатся или снимутся — вы сразу об этом узнаете.",
-                            fontSize = 14.sp,
-                            color = Color.White.copy(alpha = 0.8f),
-                            textAlign = TextAlign.Center,
-                            lineHeight = 20.sp
-                        )
+                        Text("мы будем отправлять вам уведомления, когда статус ограничений изменится.\n\nнапример, если ограничения включатся или снимутся — вы сразу об этом узнаете.", fontSize = 14.sp, color = Color.White.copy(alpha = 0.8f), textAlign = TextAlign.Center, lineHeight = 20.sp)
                         Spacer(Modifier.height(24.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = { onNext(OnboardingStep.LOCATION_REASON) },
-                                modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text("пропустить", fontSize = 12.sp)
-                            }
-                            Button(
-                                onClick = {
-                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                        permissions.launchMultiplePermissionRequest()
-                                    }
-                                    onNext(OnboardingStep.NOTIFICATION_PERMISSION)
-                                },
-                                modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6)),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text("разрешить", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { onNext(OnboardingStep.LOCATION_REASON) }, modifier = Modifier.weight(1f), colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White), shape = RoundedCornerShape(12.dp)) { Text("пропустить", fontSize = 12.sp) }
+                            Button(onClick = { permissions.launchMultiplePermissionRequest(); onNext(OnboardingStep.NOTIFICATION_PERMISSION) }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6)), shape = RoundedCornerShape(12.dp)) { Text("разрешить", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
                         }
                     }
-
                     OnboardingStep.NOTIFICATION_PERMISSION -> {
-                        Icon(
-                            if (permissions.permissions.any { it.status == androidx.compose.runtime.getValue(androidx.compose.runtime.snapshots.SnapshotStateObserver::class.java.getDeclaredMethod("observeReads", androidx.compose.runtime.MutableSnapshot::class.java, kotlin.Function1::class.java, kotlin.Function1::class.java).let { method -> method.isAccessible = true; method.invoke(null, null, {}, {}) } == true) }) 
-                                Icons.Default.CheckCircle 
-                            else Icons.Default.Warning,
-                            null,
-                            tint = if (permissions.permissions.all { it.status == androidx.compose.runtime.getValue(androidx.compose.runtime.snapshots.SnapshotStateObserver::class.java.getDeclaredMethod("observeReads", androidx.compose.runtime.MutableSnapshot::class.java, kotlin.Function1::class.java, kotlin.Function1::class.java).let { method -> method.isAccessible = true; method.invoke(null, null, {}, {}) } == true) }) 
-                                Color(0xFF4CAF50) 
-                            else Color(0xFFFFA726),
-                            modifier = Modifier.size(64.dp)
-                        )
+                        Icon(if (notificationsGranted) Icons.Default.CheckCircle else Icons.Default.Warning, null, tint = if (notificationsGranted) Color(0xFF4CAF50) else Color(0xFFFFA726), modifier = Modifier.size(64.dp))
                         Spacer(Modifier.height(16.dp))
-                        Text(
-                            "разрешение на уведомления",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            textAlign = TextAlign.Center
-                        )
+                        Text("разрешение на уведомления", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White, textAlign = TextAlign.Center)
                         Spacer(Modifier.height(12.dp))
-                        Text(
-                            if (permissions.permissions.any { it.permission == Manifest.permission.POST_NOTIFICATIONS && it.status == androidx.compose.runtime.getValue(androidx.compose.runtime.snapshots.SnapshotStateObserver::class.java.getDeclaredMethod("observeReads", androidx.compose.runtime.MutableSnapshot::class.java, kotlin.Function1::class.java, kotlin.Function1::class.java).let { method -> method.isAccessible = true; method.invoke(null, null, {}, {}) } == true) })
-                                "отлично! теперь вы будете получать уведомления об изменениях."
-                            else
-                                "разрешение не получено. вы можете включить уведомления позже в настройках.",
-                            fontSize = 14.sp,
-                            color = Color.White.copy(alpha = 0.8f),
-                            textAlign = TextAlign.Center,
-                            lineHeight = 20.sp
-                        )
+                        Text(if (notificationsGranted) "отлично! теперь вы будете получать уведомления об изменениях." else "разрешение не получено. вы можете включить уведомления позже в настройках.", fontSize = 14.sp, color = Color.White.copy(alpha = 0.8f), textAlign = TextAlign.Center, lineHeight = 20.sp)
                         Spacer(Modifier.height(24.dp))
-                        Button(
-                            onClick = { onNext(OnboardingStep.LOCATION_REASON) },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6)),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("далее", fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                        }
+                        Button(onClick = { onNext(OnboardingStep.LOCATION_REASON) }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6)), shape = RoundedCornerShape(12.dp)) { Text("далее", fontSize = 14.sp, fontWeight = FontWeight.Bold) }
                     }
-
                     OnboardingStep.LOCATION_REASON -> {
-                        Icon(
-                            Icons.Default.LocationOn,
-                            null,
-                            tint = Color(0xFF3B82F6),
-                            modifier = Modifier.size(64.dp)
-                        )
+                        Icon(Icons.Default.LocationOn, null, tint = Color(0xFF3B82F6), modifier = Modifier.size(64.dp))
                         Spacer(Modifier.height(16.dp))
-                        Text(
-                            "зачем нужна геолокация?",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            textAlign = TextAlign.Center
-                        )
+                        Text("зачем нужна геолокация?", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White, textAlign = TextAlign.Center)
                         Spacer(Modifier.height(12.dp))
-                        Text(
-                            "мы сохраняем координаты каждой проверки, чтобы вы могли отследить, где именно были обнаружены ограничения.\n\nпожалуйста, включите точную геолокацию и выберите \"всегда\" или \"при использовании приложения\".",
-                            fontSize = 14.sp,
-                            color = Color.White.copy(alpha = 0.8f),
-                            textAlign = TextAlign.Center,
-                            lineHeight = 20.sp
-                        )
+                        Text("мы сохраняем координаты каждой проверки, чтобы вы могли отследить, где именно были обнаружены ограничения.\n\nпожалуйста, включите точную геолокацию и выберите \"всегда\" или \"при использовании приложения\".", fontSize = 14.sp, color = Color.White.copy(alpha = 0.8f), textAlign = TextAlign.Center, lineHeight = 20.sp)
                         Spacer(Modifier.height(24.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = { onNext(OnboardingStep.THANKS) },
-                                modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text("пропустить", fontSize = 12.sp)
-                            }
-                            Button(
-                                onClick = {
-                                    permissions.launchMultiplePermissionRequest()
-                                    onNext(OnboardingStep.LOCATION_PERMISSION)
-                                },
-                                modifier = Modifier.weight(1f),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6)),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text("разрешить", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = { onNext(OnboardingStep.THANKS) }, modifier = Modifier.weight(1f), colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White), shape = RoundedCornerShape(12.dp)) { Text("пропустить", fontSize = 12.sp) }
+                            Button(onClick = { permissions.launchMultiplePermissionRequest(); onNext(OnboardingStep.LOCATION_PERMISSION) }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6)), shape = RoundedCornerShape(12.dp)) { Text("разрешить", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
                         }
                     }
-
                     OnboardingStep.LOCATION_PERMISSION -> {
-                        Icon(
-                            Icons.Default.CheckCircle,
-                            null,
-                            tint = Color(0xFF4CAF50),
-                            modifier = Modifier.size(64.dp)
-                        )
+                        Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF4CAF50), modifier = Modifier.size(64.dp))
                         Spacer(Modifier.height(16.dp))
-                        Text(
-                            "геолокация разрешена",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            textAlign = TextAlign.Center
-                        )
+                        Text("геолокация разрешена", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color.White, textAlign = TextAlign.Center)
                         Spacer(Modifier.height(12.dp))
-                        Text(
-                            "отлично! теперь приложение будет сохранять местоположение каждой проверки.",
-                            fontSize = 14.sp,
-                            color = Color.White.copy(alpha = 0.8f),
-                            textAlign = TextAlign.Center,
-                            lineHeight = 20.sp
-                        )
+                        Text("отлично! теперь приложение будет сохранять местоположение каждой проверки.", fontSize = 14.sp, color = Color.White.copy(alpha = 0.8f), textAlign = TextAlign.Center, lineHeight = 20.sp)
                         Spacer(Modifier.height(24.dp))
-                        Button(
-                            onClick = { onNext(OnboardingStep.THANKS) },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6)),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("далее", fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                        }
+                        Button(onClick = { onNext(OnboardingStep.THANKS) }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6)), shape = RoundedCornerShape(12.dp)) { Text("далее", fontSize = 14.sp, fontWeight = FontWeight.Bold) }
                     }
-
                     OnboardingStep.THANKS -> {
-                        Icon(
-                            Icons.Default.EmojiEvents,
-                            null,
-                            tint = Color(0xFFFFA726),
-                            modifier = Modifier.size(64.dp)
-                        )
+                        Icon(Icons.Default.EmojiEvents, null, tint = Color(0xFFFFA726), modifier = Modifier.size(64.dp))
                         Spacer(Modifier.height(16.dp))
-                        Text(
-                            "спасибо за понимание!",
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White,
-                            textAlign = TextAlign.Center
-                        )
+                        Text("спасибо за понимание!", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, textAlign = TextAlign.Center)
                         Spacer(Modifier.height(12.dp))
-                        Text(
-                            "всё готово. приятного пользования!",
-                            fontSize = 16.sp,
-                            color = Color.White.copy(alpha = 0.8f),
-                            textAlign = TextAlign.Center
-                        )
+                        Text("всё готово. приятного пользования!", fontSize = 16.sp, color = Color.White.copy(alpha = 0.8f), textAlign = TextAlign.Center)
                         Spacer(Modifier.height(24.dp))
-                        Button(
-                            onClick = onComplete,
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFA726)),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("начать", fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                        }
+                        Button(onClick = onComplete, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFFA726)), shape = RoundedCornerShape(12.dp)) { Text("начать", fontSize = 14.sp, fontWeight = FontWeight.Bold) }
                     }
-
                     OnboardingStep.NONE -> {}
                 }
             }
@@ -493,67 +276,26 @@ fun OnboardingDialog(
 // FLOATING NAVIGATION BAR
 // =============================================
 @Composable
-fun FloatingNavigationBar(
-    currentScreen: Screen,
-    onScreenSelected: (Screen) -> Unit,
-    isRestricted: Boolean?,
-    modifier: Modifier = Modifier
-) {
-    val items = listOf(
-        Triple(Icons.Default.Home, "главный", Screen.MAIN),
-        Triple(Icons.Default.History, "история", Screen.HISTORY),
-        Triple(Icons.Default.Settings, "настройки", Screen.SETTINGS),
-        Triple(Icons.Default.Info, "информация", Screen.INFO)
-    )
+fun FloatingNavigationBar(currentScreen: Screen, onScreenSelected: (Screen) -> Unit, isRestricted: Boolean?, modifier: Modifier = Modifier) {
+    val items = listOf(Triple(Icons.Default.Home, "главный", Screen.MAIN), Triple(Icons.Default.History, "история", Screen.HISTORY), Triple(Icons.Default.Settings, "настройки", Screen.SETTINGS), Triple(Icons.Default.Info, "информация", Screen.INFO))
 
     val activeColor = when (currentScreen) {
-        Screen.MAIN -> when (isRestricted) {
-            true -> Color.Black
-            false -> Color.White
-            null -> Color(0xFF3B82F6)
-        }
+        Screen.MAIN -> when (isRestricted) { true -> Color.Black; false -> Color.White; null -> Color(0xFF3B82F6) }
         Screen.HISTORY -> Color(0xFF3B82F6)
         Screen.SETTINGS -> Color(0xFF4CAF50)
         Screen.INFO -> Color(0xFFFF9800)
     }
+    val activeTextColor = if (currentScreen == Screen.MAIN && isRestricted == false) Color.Black else Color.White
 
-    Box(
-        modifier = modifier
-            .padding(horizontal = 16.dp)
-            .clip(RoundedCornerShape(28.dp))
-            .background(Color(0xFF1A1A1A).copy(alpha = 0.95f))
-            .padding(8.dp)
-    ) {
+    Box(modifier = modifier.padding(horizontal = 16.dp).clip(RoundedCornerShape(28.dp)).background(Color(0xFF1A1A1A).copy(alpha = 0.95f)).padding(8.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             items.forEach { (icon, label, screen) ->
                 val isSelected = currentScreen == screen
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(if (isSelected) activeColor else Color.Transparent)
-                        .clickable { onScreenSelected(screen) }
-                        .padding(vertical = 12.dp, horizontal = 8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
+                Box(modifier = Modifier.weight(1f).clip(RoundedCornerShape(20.dp)).background(if (isSelected) activeColor else Color.Transparent).clickable { onScreenSelected(screen) }.padding(vertical = 12.dp, horizontal = 8.dp), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            icon,
-                            contentDescription = label,
-                            tint = if (isSelected) {
-                                if (currentScreen == Screen.MAIN && isRestricted == false) Color.Black else Color.White
-                            } else Color.Gray,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        Icon(icon, contentDescription = label, tint = if (isSelected) activeTextColor else Color.Gray, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.height(4.dp))
-                        Text(
-                            label,
-                            fontSize = 9.sp,
-                            color = if (isSelected) {
-                                if (currentScreen == Screen.MAIN && isRestricted == false) Color.Black else Color.White
-                            } else Color.Gray,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                        )
+                        Text(label, fontSize = 9.sp, color = if (isSelected) activeTextColor else Color.Gray, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal)
                     }
                 }
             }
@@ -566,16 +308,11 @@ fun FloatingNavigationBar(
 // =============================================
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
-fun MainScreen(
-    activity: MainActivity,
-    historyRepo: HistoryRepository,
-    appLogs: List<String>,
-    isRestricted: Boolean?,
-    onStateUpdate: (List<String>, Boolean?) -> Unit
-) {
+fun MainScreen(activity: MainActivity, historyRepo: HistoryRepository, appLogs: List<String>, isRestricted: Boolean?, onStateUpdate: (List<String>, Boolean?) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val prefs = context.getSharedPreferences("whitelist_prefs", Context.MODE_PRIVATE)
+    val permissions = rememberMultiplePermissionsState(permissions = listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.POST_NOTIFICATIONS))
 
     var isChecking by remember { mutableStateOf(false) }
     var resultText by remember { mutableStateOf("") }
@@ -589,73 +326,21 @@ fun MainScreen(
         onStateUpdate(newLogs, isRestricted)
     }
 
-    // Синхронная пульсация всех кругов
-    val pulseScale by animateFloatAsState(
-        targetValue = if (isChecking) 1.08f else 1.03f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulseScale"
-    )
+    val pulseTransition = rememberInfiniteTransition(label = "pulse")
+    val pulseScale by pulseTransition.animateFloat(initialValue = 1f, targetValue = if (isChecking) 1.08f else 1.03f, animationSpec = infiniteRepeatable(animation = tween(1500, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse), label = "pulseScale")
+    val pulseAlpha by pulseTransition.animateFloat(initialValue = 0.15f, targetValue = if (isChecking) 0.25f else 0.15f, animationSpec = infiniteRepeatable(animation = tween(1500, easing = FastOutSlowInEasing), repeatMode = RepeatMode.Reverse), label = "pulseAlpha")
 
-    val pulseAlpha by animateFloatAsState(
-        targetValue = if (isChecking) 0.25f else 0.15f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1500, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulseAlpha"
-    )
+    val radarTransition = rememberInfiniteTransition(label = "radar")
+    val radarAngle by radarTransition.animateFloat(initialValue = 0f, targetValue = 360f, animationSpec = infiniteRepeatable(animation = tween(durationMillis = if (isChecking) 1000 else 4000, easing = LinearEasing), repeatMode = RepeatMode.Restart), label = "radarAngle")
 
-    // Эффект радара: быстрый старт, потом медленное вращение
-    val radarAngle by animateFloatAsState(
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(
-                durationMillis = if (isChecking) 1000 else 4000,
-                easing = LinearEasing
-            ),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "radarAngle"
-    )
+    val circleExpandScale by animateFloatAsState(targetValue = if (isChecking) 1.5f else 1.0f, animationSpec = tween(800, easing = FastOutSlowInEasing), label = "circleExpand")
 
-    // Анимация расширения кругов до краёв (но не на весь экран)
-    val circleExpandScale by animateFloatAsState(
-        targetValue = if (isChecking) 1.5f else 1.0f,
-        animationSpec = tween(800, easing = FastOutSlowInEasing),
-        label = "circleExpand"
-    )
+    val backgroundColor by animateColorAsState(targetValue = if (isRestricted == true) Color.White else Color.Black, animationSpec = tween(600, easing = FastOutSlowInEasing), label = "bgColor")
+    val textColor by animateColorAsState(targetValue = if (isRestricted == true) Color.Black else Color.White, animationSpec = tween(600, easing = FastOutSlowInEasing), label = "textColor")
 
-    // Цвета темы
-    val backgroundColor by animateColorAsState(
-        targetValue = if (isRestricted == true) Color.White else Color.Black,
-        animationSpec = tween(600, easing = FastOutSlowInEasing),
-        label = "bgColor"
-    )
-    
-    val textColor by animateColorAsState(
-        targetValue = if (isRestricted == true) Color.Black else Color.White,
-        animationSpec = tween(600, easing = FastOutSlowInEasing),
-        label = "textColor"
-    )
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(backgroundColor)
-            .padding(24.dp),
-        contentAlignment = Alignment.Center
-    ) {
+    Box(modifier = Modifier.fillMaxSize().background(backgroundColor).padding(24.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-            
-            // Анимированный заголовок
-            AnimatedContent(
-                targetState = isChecking,
-                transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(300)) },
-                label = "title_animation"
-            ) { checking ->
+            AnimatedContent(targetState = isChecking, transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(300)) }, label = "title_animation") { checking ->
                 if (checking) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("идёт проверка...", fontSize = 28.sp, fontWeight = FontWeight.ExtraBold, color = textColor, textAlign = TextAlign.Center)
@@ -672,130 +357,70 @@ fun MainScreen(
             
             Spacer(Modifier.height(48.dp))
 
-            // Круглая кнопка с анимацией
             Box(modifier = Modifier.size(280.dp), contentAlignment = Alignment.Center) {
-                // Пульсирующие круги (все синхронно)
-                Box(
-                    modifier = Modifier
-                        .size(260.dp)
-                        .scale(pulseScale * circleExpandScale)
-                        .clip(CircleShape)
-                        .background(textColor.copy(alpha = pulseAlpha * 0.5f))
-                )
-                Box(
-                    modifier = Modifier
-                        .size(220.dp)
-                        .scale(pulseScale * circleExpandScale)
-                        .clip(CircleShape)
-                        .background(textColor.copy(alpha = pulseAlpha))
-                )
+                Box(modifier = Modifier.size(260.dp).scale(pulseScale * circleExpandScale).clip(CircleShape).background(textColor.copy(alpha = pulseAlpha * 0.5f)))
+                Box(modifier = Modifier.size(220.dp).scale(pulseScale * circleExpandScale).clip(CircleShape).background(textColor.copy(alpha = pulseAlpha)))
                 
-                // Маленький круг с эффектом радара
-                Box(
-                    modifier = Modifier
-                        .size(180.dp)
-                        .scale(pulseScale)
-                        .clip(CircleShape)
-                        .background(textColor.copy(alpha = pulseAlpha * 1.5f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    // Вращающаяся дуга (радар)
+                Box(modifier = Modifier.size(180.dp).scale(pulseScale).clip(CircleShape).background(textColor.copy(alpha = pulseAlpha * 1.5f)), contentAlignment = Alignment.Center) {
                     Canvas(modifier = Modifier.size(160.dp)) {
                         val radius = size.minDimension / 2 - 10.dp.toPx()
-                        drawArc(
-                            color = backgroundColor.copy(alpha = 0.8f),
-                            startAngle = radarAngle,
-                            sweepAngle = 90f,
-                            useCenter = false,
-                            topLeft = Offset(size.width / 2 - radius, size.height / 2 - radius),
-                            size = Size(radius * 2, radius * 2),
-                            style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round)
-                        )
+                        drawArc(color = backgroundColor.copy(alpha = 0.8f), startAngle = radarAngle, sweepAngle = 90f, useCenter = false, topLeft = Offset(size.width / 2 - radius, size.height / 2 - radius), size = Size(radius * 2, radius * 2), style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round))
                     }
                     
-                    // Центральная кнопка (белая)
-                    Box(
-                        modifier = Modifier
-                            .size(140.dp)
-                            .clip(CircleShape)
-                            .background(Color.White)
-                            .clickable(enabled = !isChecking && connectionError == null) {
-                                val connStatus = activity.checkConnectionStatus(context)
-                                when (connStatus) {
-                                    ConnectionStatus.NO_SIM -> connectionError = "нет sim-карты"
-                                    ConnectionStatus.NO_INTERNET -> connectionError = "нет интернет-соединения"
-                                    ConnectionStatus.WIFI_AND_MOBILE -> connectionError = "отключите Wi-Fi"
-                                    ConnectionStatus.VPN_ACTIVE -> connectionError = "отключите VPN"
-                                    ConnectionStatus.MOBILE_ONLY -> {
-                                        connectionError = null
-                                        isChecking = true
-                                        resultText = ""
-                                        serviceStatuses = emptyList()
-                                        locationInfo = ""
-                                        addLog("▶ начата проверка")
-                                        
-                                        scope.launch {
-                                            try {
-                                                val permissions = rememberMultiplePermissionsState(
-                                                    permissions = listOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.POST_NOTIFICATIONS)
-                                                )
-                                                
-                                                if (!permissions.allPermissionsGranted) {
-                                                    permissions.launchMultiplePermissionRequest()
-                                                    addLog(" запрошены разрешения")
-                                                    isChecking = false
-                                                    return@launch
-                                                }
-                                                
-                                                var location = ""
-                                                try {
-                                                    val loc = LocationServices.getFusedLocationProviderClient(context).lastLocation.await()
-                                                    location = "координаты: %.4f, %.4f".format(loc.latitude, loc.longitude)
-                                                } catch (e: Exception) {
-                                                    location = "геолокация недоступна"
-                                                }
-                                                
-                                                val statuses = NetworkChecker.checkAll(context)
-                                                serviceStatuses = statuses
-                                                val restricted = NetworkChecker.isRestricted(statuses)
-                                                onStateUpdate(appLogs, restricted)
-                                                locationInfo = location
-                                                
-                                                resultText = if (restricted)
-                                                    "обнаружены ограничения интернета.\nнекоторые зарубежные сайты недоступны."
-                                                else
-                                                    "всё в порядке. все проверенные сервисы доступны."
-                                                
-                                                val available = statuses.count { it.isAccessible }
-                                                addLog("✅ проверка завершена, доступно $available из ${statuses.size}")
-                                                statuses.forEach { addLog("  ${it.name}: ${if (it.isAccessible) "OK" else "❌"}") }
-                                                
-                                                historyRepo.saveCheck(restricted, statuses, locationInfo)
-                                                addLog("📋 история сохранена")
-                                                WidgetProvider.updateWidget(context, restricted, statuses)
-                                                
-                                                val lastRestricted = prefs.getBoolean("last_restricted", true)
-                                                if (restricted && !lastRestricted)
-                                                    sendNotificationManual(context, "️ ограничения включены", "некоторые зарубежные сайты могут быть недоступны.")
-                                                else if (!restricted && lastRestricted)
-                                                    sendNotificationManual(context, "✅ ограничения сняты", "все сервисы снова доступны.")
-                                                else if (!restricted)
-                                                    sendNotificationManual(context, "💡 напоминание", "ограничения могут вернуться в любой момент.")
-                                                
-                                                prefs.edit().putBoolean("last_restricted", restricted).apply()
-                                            } catch (e: Exception) {
-                                                resultText = "ошибка: ${e.message}"
-                                                addLog("⚠ ошибка: ${e.message}")
-                                                e.printStackTrace()
-                                            } finally {
-                                                isChecking = false
-                                            }
+                    Box(modifier = Modifier.size(140.dp).clip(CircleShape).background(Color.White).clickable(enabled = !isChecking && connectionError == null) {
+                        val connStatus = activity.checkConnectionStatus(context)
+                        when (connStatus) {
+                            ConnectionStatus.NO_SIM -> connectionError = "нет sim-карты"
+                            ConnectionStatus.NO_INTERNET -> connectionError = "нет интернет-соединения"
+                            ConnectionStatus.WIFI_AND_MOBILE -> connectionError = "отключите Wi-Fi"
+                            ConnectionStatus.VPN_ACTIVE -> connectionError = "отключите VPN"
+                            ConnectionStatus.MOBILE_ONLY -> {
+                                connectionError = null
+                                isChecking = true; resultText = ""; serviceStatuses = emptyList(); locationInfo = ""
+                                addLog("▶ начата проверка")
+                                scope.launch {
+                                    try {
+                                        if (!permissions.allPermissionsGranted) {
+                                            permissions.launchMultiplePermissionRequest()
+                                            addLog(" запрошены разрешения")
+                                            isChecking = false
+                                            return@launch
                                         }
+                                        var location = ""
+                                        try {
+                                            val loc = LocationServices.getFusedLocationProviderClient(context).lastLocation.await()
+                                            location = "координаты: %.4f, %.4f".format(loc.latitude, loc.longitude)
+                                        } catch (e: Exception) { location = "геолокация недоступна" }
+                                        
+                                        val statuses = NetworkChecker.checkAll(context)
+                                        serviceStatuses = statuses
+                                        val restricted = NetworkChecker.isRestricted(statuses)
+                                        onStateUpdate(appLogs, restricted)
+                                        locationInfo = location
+                                        resultText = if (restricted) "обнаружены ограничения интернета.\nнекоторые зарубежные сайты недоступны." else "всё в порядке. все проверенные сервисы доступны."
+                                        
+                                        val available = statuses.count { it.isAccessible }
+                                        addLog("✅ проверка завершена, доступно $available из ${statuses.size}")
+                                        statuses.forEach { addLog("  ${it.name}: ${if (it.isAccessible) "OK" else "❌"}") }
+                                        historyRepo.saveCheck(restricted, statuses, locationInfo)
+                                        addLog("📋 история сохранена")
+                                        WidgetProvider.updateWidget(context, restricted, statuses)
+                                        
+                                        val lastRestricted = prefs.getBoolean("last_restricted", true)
+                                        if (restricted && !lastRestricted) sendNotificationManual(context, "⚠️ ограничения включены", "некоторые зарубежные сайты могут быть недоступны.")
+                                        else if (!restricted && lastRestricted) sendNotificationManual(context, "✅ ограничения сняты", "все сервисы снова доступны.")
+                                        else if (!restricted) sendNotificationManual(context, "💡 напоминание", "ограничения могут вернуться в любой момент.")
+                                        prefs.edit().putBoolean("last_restricted", restricted).apply()
+                                    } catch (e: Exception) {
+                                        resultText = "ошибка: ${e.message}"
+                                        addLog("⚠ ошибка: ${e.message}")
+                                    } finally {
+                                        isChecking = false
                                     }
                                 }
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
+                            }
+                        }
+                    }, contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(Icons.Default.CellTower, null, tint = Color.Black, modifier = Modifier.size(48.dp))
                             Spacer(Modifier.height(4.dp))
@@ -807,43 +432,31 @@ fun MainScreen(
 
             Spacer(Modifier.height(32.dp))
 
-            // Кнопка "как это работает?"
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { showHowItWorks = true }) {
                 Icon(Icons.Default.Info, null, tint = textColor.copy(alpha = 0.6f), modifier = Modifier.size(16.dp))
                 Spacer(Modifier.width(8.dp))
                 Text("как это работает?", fontSize = 12.sp, color = textColor.copy(alpha = 0.6f))
             }
-
             Spacer(Modifier.height(24.dp))
 
-            // Ошибка соединения
             if (connectionError != null) {
-                Text(connectionError!!, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFA726), textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().background(Color(0xFFFFA726).copy(alpha = 0.15f), RoundedCornerShape(8.dp)).padding(16.dp))
+                Text(connectionError!!, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFA726), textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().background(Color(0xFFFFA726).copy(alpha = 0.15f), RoundedCornerShape(8.dp)).padding(16.dp))
                 Spacer(Modifier.height(16.dp))
             }
-
-            // Результат проверки
             if (resultText.isNotEmpty()) {
-                Text(resultText, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = textColor, textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().background(textColor.copy(alpha = 0.1f), RoundedCornerShape(8.dp)).padding(16.dp))
+                Text(resultText, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = textColor, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth().background(textColor.copy(alpha = 0.1f), RoundedCornerShape(8.dp)).padding(16.dp))
                 Spacer(Modifier.height(12.dp))
             }
-
-            // Локация
             if (locationInfo.isNotEmpty()) {
                 Text(locationInfo, fontSize = 11.sp, color = textColor.copy(alpha = 0.5f))
                 Spacer(Modifier.height(12.dp))
             }
-
-            // Статусы сервисов
             if (serviceStatuses.isNotEmpty()) {
                 Text("статус сервисов:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = textColor.copy(alpha = 0.7f), modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
                 serviceStatuses.forEach { service ->
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                        Icon(if (service.isAccessible) Icons.Filled.Check else Icons.Filled.Close, null,
-                            tint = if (service.isAccessible) Color(0xFF4CAF50) else Color(0xFFE53935), modifier = Modifier.size(16.dp))
+                        Icon(if (service.isAccessible) Icons.Filled.Check else Icons.Filled.Close, null, tint = if (service.isAccessible) Color(0xFF4CAF50) else Color(0xFFE53935), modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(8.dp))
                         Text(service.name.lowercase(), color = textColor, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
@@ -852,13 +465,8 @@ fun MainScreen(
         }
     }
 
-    // Диалог "как это работает?"
     if (showHowItWorks) {
-        InfoTooltipDialog(
-            title = "как это работает?",
-            content = "приложение проверяет доступность российских (госуслуги, яндекс) и зарубежных (google, wikipedia) сайтов через мобильный интернет.\n\nесли российские работают, а зарубежные нет — значит, в вашей сети действуют ограничения.\n\nпроверка работает только при отключённом Wi-Fi и VPN.",
-            onDismiss = { showHowItWorks = false }
-        )
+        InfoTooltipDialog(title = "как это работает?", content = "приложение проверяет доступность российских (госуслуги, яндекс) и зарубежных (google, wikipedia) сайтов через мобильный интернет.\n\nесли российские работают, а зарубежные нет — значит, в вашей сети действуют ограничения.\n\nпроверка работает только при отключённом Wi-Fi и VPN.", onDismiss = { showHowItWorks = false })
     }
 }
 
@@ -868,8 +476,7 @@ fun MainScreen(
 @Composable
 fun InfoTooltipDialog(title: String, content: String, onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss) {
-        Card(modifier = Modifier.fillMaxWidth().padding(16.dp), shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A))) {
+        Card(modifier = Modifier.fillMaxWidth().padding(16.dp), shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A))) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Info, null, tint = Color(0xFF3B82F6), modifier = Modifier.size(20.dp))
@@ -879,9 +486,7 @@ fun InfoTooltipDialog(title: String, content: String, onDismiss: () -> Unit) {
                 Spacer(Modifier.height(12.dp))
                 Text(content, fontSize = 12.sp, color = Color.White.copy(alpha = 0.8f), lineHeight = 16.sp)
                 Spacer(Modifier.height(16.dp))
-                Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6)), shape = RoundedCornerShape(8.dp)) {
-                    Text("понятно", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                }
+                Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6)), shape = RoundedCornerShape(8.dp)) { Text("понятно", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
             }
         }
     }
@@ -898,9 +503,7 @@ fun HistoryScreen(activity: MainActivity, historyRepo: HistoryRepository, appLog
     var showTab by remember { mutableStateOf(0) }
     var showClearConfirm by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
-        historyList = historyRepo.getHistory()
-    }
+    LaunchedEffect(Unit) { historyList = historyRepo.getHistory() }
 
     Column(modifier = Modifier.fillMaxSize().padding(24.dp).padding(bottom = 100.dp)) {
         Text("история проверок", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
@@ -909,21 +512,14 @@ fun HistoryScreen(activity: MainActivity, historyRepo: HistoryRepository, appLog
         Spacer(Modifier.height(16.dp))
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Box(modifier = Modifier.weight(1f).clip(RoundedCornerShape(20.dp)).background(if (showTab == 0) Color(0xFF3B82F6) else Color(0xFF1A1A1A)).clickable { showTab = 0 }.padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
-                Text("история", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (showTab == 0) Color.White else Color.Gray)
-            }
-            Box(modifier = Modifier.weight(1f).clip(RoundedCornerShape(20.dp)).background(if (showTab == 1) Color(0xFF3B82F6) else Color(0xFF1A1A1A)).clickable { showTab = 1 }.padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
-                Text("логи", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (showTab == 1) Color.White else Color.Gray)
-            }
+            Box(modifier = Modifier.weight(1f).clip(RoundedCornerShape(20.dp)).background(if (showTab == 0) Color(0xFF3B82F6) else Color(0xFF1A1A1A)).clickable { showTab = 0 }.padding(vertical = 12.dp), contentAlignment = Alignment.Center) { Text("история", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (showTab == 0) Color.White else Color.Gray) }
+            Box(modifier = Modifier.weight(1f).clip(RoundedCornerShape(20.dp)).background(if (showTab == 1) Color(0xFF3B82F6) else Color(0xFF1A1A1A)).clickable { showTab = 1 }.padding(vertical = 12.dp), contentAlignment = Alignment.Center) { Text("логи", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (showTab == 1) Color.White else Color.Gray) }
         }
-
         Spacer(Modifier.height(16.dp))
 
         if (showTab == 0) {
             if (historyList.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("пока нет записей", fontSize = 14.sp, color = Color.White.copy(alpha = 0.4f))
-                }
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("пока нет записей", fontSize = 14.sp, color = Color.White.copy(alpha = 0.4f)) }
             } else {
                 LazyColumn(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(historyList, key = { it.id }) { entry ->
@@ -939,45 +535,26 @@ fun HistoryScreen(activity: MainActivity, historyRepo: HistoryRepository, appLog
             }
         } else {
             if (appLogs.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("логи появятся после проверки", fontSize = 14.sp, color = Color.White.copy(alpha = 0.4f))
-                }
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("логи появятся после проверки", fontSize = 14.sp, color = Color.White.copy(alpha = 0.4f)) }
             } else {
-                LazyColumn(modifier = Modifier.weight(1f)) {
-                    items(appLogs) { log ->
-                        Text(log, fontSize = 11.sp, color = Color.White.copy(alpha = 0.6f), modifier = Modifier.padding(vertical = 2.dp))
-                    }
-                }
+                LazyColumn(modifier = Modifier.weight(1f)) { items(appLogs) { log -> Text(log, fontSize = 11.sp, color = Color.White.copy(alpha = 0.6f), modifier = Modifier.padding(vertical = 2.dp)) } }
             }
         }
 
         Row(modifier = Modifier.fillMaxWidth().padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { activity.exportHistory(context, historyRepo) }, modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(Color.White.copy(alpha = 0.3f))),
-                shape = RoundedCornerShape(20.dp)) {
-                Icon(Icons.Default.FileDownload, null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("экспорт", fontSize = 12.sp)
+            OutlinedButton(onClick = { activity.exportHistory(context, historyRepo) }, modifier = Modifier.weight(1f), colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White), border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(Color.White.copy(alpha = 0.3f))), shape = RoundedCornerShape(20.dp)) {
+                Icon(Icons.Default.FileDownload, null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(8.dp)); Text("экспорт", fontSize = 12.sp)
             }
-            OutlinedButton(onClick = { showClearConfirm = true }, modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFE53935)),
-                border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(Color(0xFFE53935))),
-                shape = RoundedCornerShape(20.dp)) {
-                Icon(Icons.Default.Delete, null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("очистить", fontSize = 12.sp)
+            OutlinedButton(onClick = { showClearConfirm = true }, modifier = Modifier.weight(1f), colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFE53935)), border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(Color(0xFFE53935))), shape = RoundedCornerShape(20.dp)) {
+                Icon(Icons.Default.Delete, null, modifier = Modifier.size(16.dp)); Spacer(Modifier.width(8.dp)); Text("очистить", fontSize = 12.sp)
             }
         }
     }
 
     if (showClearConfirm) {
-        AlertDialog(onDismissRequest = { showClearConfirm = false },
-            title = { Text("очистить историю?", color = Color.White, fontSize = 14.sp) },
-            text = { Text("это действие нельзя отменить.", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp) },
+        AlertDialog(onDismissRequest = { showClearConfirm = false }, title = { Text("очистить историю?", color = Color.White, fontSize = 14.sp) }, text = { Text("это действие нельзя отменить.", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp) },
             confirmButton = { TextButton(onClick = { scope.launch { historyRepo.clearHistory(); historyList = emptyList(); Toast.makeText(context, "история очищена", Toast.LENGTH_SHORT).show() }; showClearConfirm = false }) { Text("очистить", color = Color(0xFFE53935), fontSize = 12.sp) } },
-            dismissButton = { TextButton(onClick = { showClearConfirm = false }) { Text("отмена", color = Color.White, fontSize = 12.sp) } },
-            containerColor = Color(0xFF1A1A1A), shape = RoundedCornerShape(16.dp))
+            dismissButton = { TextButton(onClick = { showClearConfirm = false }) { Text("отмена", color = Color.White, fontSize = 12.sp) } }, containerColor = Color(0xFF1A1A1A), shape = RoundedCornerShape(16.dp))
     }
 }
 
@@ -997,16 +574,13 @@ fun HistoryCard(entry: HistoryEntity, onDelete: () -> Unit) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text("$date | $time", fontSize = 11.sp, color = Color.White.copy(alpha = 0.5f), fontWeight = FontWeight.Bold)
-                IconButton(onClick = onDelete) {
-                    Icon(Icons.Default.Delete, "Удалить", tint = Color(0xFFE53935), modifier = Modifier.size(18.dp))
-                }
+                IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, "Удалить", tint = Color(0xFFE53935), modifier = Modifier.size(18.dp)) }
             }
             Spacer(Modifier.height(8.dp))
             statuses.forEach { (name, isAccessible) ->
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
                     Text("$name: ", fontSize = 11.sp, color = Color.White.copy(alpha = 0.7f))
-                    Icon(if (isAccessible) Icons.Filled.Check else Icons.Filled.Close, null,
-                        tint = if (isAccessible) Color(0xFF4CAF50) else Color(0xFFE53935), modifier = Modifier.size(14.dp))
+                    Icon(if (isAccessible) Icons.Filled.Check else Icons.Filled.Close, null, tint = if (isAccessible) Color(0xFF4CAF50) else Color(0xFFE53935), modifier = Modifier.size(14.dp))
                 }
             }
             if (entry.location != null) {
@@ -1046,23 +620,16 @@ fun SettingsScreen(historyRepo: HistoryRepository) {
                 Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Notifications, null, tint = Color.White, modifier = Modifier.size(20.dp))
                     Spacer(Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("push-уведомления", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                        Text("оповещения об изменениях", fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f))
-                    }
-                    IconButton(onClick = { showInfoTooltip = "уведомления" }) {
-                        Icon(Icons.Default.Info, null, tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(16.dp))
-                    }
+                    Column(modifier = Modifier.weight(1f)) { Text("push-уведомления", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White); Text("оповещения об изменениях", fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f)) }
+                    IconButton(onClick = { showInfoTooltip = "уведомления" }) { Icon(Icons.Default.Info, null, tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(16.dp)) }
                     Spacer(Modifier.width(8.dp))
                     Switch(checked = notificationEnabled, onCheckedChange = { enabled ->
-                        notificationEnabled = enabled
-                        prefs.edit().putBoolean("notifications_enabled", enabled).apply()
+                        notificationEnabled = enabled; prefs.edit().putBoolean("notifications_enabled", enabled).apply()
                         if (enabled) { NotificationWorker.schedule(context); Toast.makeText(context, "уведомления включены", Toast.LENGTH_SHORT).show() }
                         else { NotificationWorker.cancel(context); Toast.makeText(context, "уведомления отключены", Toast.LENGTH_SHORT).show() }
                     }, colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFF4CAF50), checkedTrackColor = Color(0xFF4CAF50).copy(alpha = 0.3f), uncheckedThumbColor = Color.Gray, uncheckedTrackColor = Color.Gray.copy(alpha = 0.3f)))
                 }
             }
-
             Spacer(Modifier.height(12.dp))
 
             Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)), shape = RoundedCornerShape(12.dp)) {
@@ -1070,27 +637,14 @@ fun SettingsScreen(historyRepo: HistoryRepository) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Schedule, null, tint = Color.White, modifier = Modifier.size(20.dp))
                         Spacer(Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("интервал проверки", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                            Text("каждые $intervalMinutes минут", fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f))
-                        }
-                        IconButton(onClick = { showInfoTooltip = "интервал" }) {
-                            Icon(Icons.Default.Info, null, tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(16.dp))
-                        }
+                        Column(modifier = Modifier.weight(1f)) { Text("интервал проверки", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White); Text("каждые $intervalMinutes минут", fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f)) }
+                        IconButton(onClick = { showInfoTooltip = "интервал" }) { Icon(Icons.Default.Info, null, tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(16.dp)) }
                     }
                     Spacer(Modifier.height(12.dp))
-                    Slider(value = intervalMinutes.toFloat(), onValueChange = { newValue ->
-                        intervalMinutes = newValue.toInt()
-                        prefs.edit().putInt("interval_minutes", intervalMinutes).apply()
-                        NotificationWorker.reschedule(context)
-                    }, valueRange = 5f..60f, steps = 10, colors = SliderDefaults.colors(thumbColor = Color(0xFF4CAF50), activeTrackColor = Color(0xFF4CAF50), inactiveTrackColor = Color(0xFF333333)))
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("5 мин", fontSize = 9.sp, color = Color.White.copy(alpha = 0.4f))
-                        Text("60 мин", fontSize = 9.sp, color = Color.White.copy(alpha = 0.4f))
-                    }
+                    Slider(value = intervalMinutes.toFloat(), onValueChange = { newValue -> intervalMinutes = newValue.toInt(); prefs.edit().putInt("interval_minutes", intervalMinutes).apply(); NotificationWorker.reschedule(context) }, valueRange = 5f..60f, steps = 10, colors = SliderDefaults.colors(thumbColor = Color(0xFF4CAF50), activeTrackColor = Color(0xFF4CAF50), inactiveTrackColor = Color(0xFF333333)))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) { Text("5 мин", fontSize = 9.sp, color = Color.White.copy(alpha = 0.4f)); Text("60 мин", fontSize = 9.sp, color = Color.White.copy(alpha = 0.4f)) }
                 }
             }
-
             Spacer(Modifier.height(12.dp))
 
             Card(modifier = Modifier.fillMaxWidth().weight(1f, fill = false), colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)), shape = RoundedCornerShape(12.dp)) {
@@ -1100,21 +654,14 @@ fun SettingsScreen(historyRepo: HistoryRepository) {
                         Spacer(Modifier.width(12.dp))
                         Text("проверяемые сайты", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         Spacer(Modifier.weight(1f))
-                        IconButton(onClick = { showInfoTooltip = "сайты" }) {
-                            Icon(Icons.Default.Info, null, tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(16.dp))
-                        }
+                        IconButton(onClick = { showInfoTooltip = "сайты" }) { Icon(Icons.Default.Info, null, tint = Color.White.copy(alpha = 0.5f), modifier = Modifier.size(16.dp)) }
                     }
                     Spacer(Modifier.height(12.dp))
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.heightIn(max = 300.dp)) {
                         items(customSites) { site ->
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(site.first, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                                    Text(site.second, fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f), maxLines = 1)
-                                }
-                                IconButton(onClick = { customSites = customSites.filter { it != site }; NetworkChecker.saveSites(context, customSites); Toast.makeText(context, "сайт удалён", Toast.LENGTH_SHORT).show() }) {
-                                    Icon(Icons.Default.Delete, "Удалить", tint = Color(0xFFE53935), modifier = Modifier.size(18.dp))
-                                }
+                                Column(modifier = Modifier.weight(1f)) { Text(site.first, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White); Text(site.second, fontSize = 10.sp, color = Color.White.copy(alpha = 0.5f), maxLines = 1) }
+                                IconButton(onClick = { customSites = customSites.filter { it != site }; NetworkChecker.saveSites(context, customSites); Toast.makeText(context, "сайт удалён", Toast.LENGTH_SHORT).show() }) { Icon(Icons.Default.Delete, "Удалить", tint = Color(0xFFE53935), modifier = Modifier.size(18.dp)) }
                             }
                         }
                     }
@@ -1122,8 +669,7 @@ fun SettingsScreen(historyRepo: HistoryRepository) {
             }
         }
 
-        FloatingActionButton(onClick = { showAddSiteDialog = true }, modifier = Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 100.dp),
-            containerColor = Color(0xFF4CAF50), contentColor = Color.White, shape = CircleShape) {
+        FloatingActionButton(onClick = { showAddSiteDialog = true }, modifier = Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 100.dp), containerColor = Color(0xFF4CAF50), contentColor = Color.White, shape = CircleShape) {
             Icon(Icons.Default.Add, "Добавить сайт", modifier = Modifier.size(20.dp))
         }
     }
@@ -1135,27 +681,22 @@ fun SettingsScreen(historyRepo: HistoryRepository) {
     }
 
     if (showAddSiteDialog) {
-        AlertDialog(onDismissRequest = { showAddSiteDialog = false },
-            title = { Text("добавить сайт", color = Color.White, fontSize = 14.sp) },
-            text = { Column {
-                OutlinedTextField(value = newSiteName, onValueChange = { newSiteName = it }, label = { Text("название", color = Color.White.copy(alpha = 0.5f), fontSize = 11.sp) }, modifier = Modifier.fillMaxWidth(), singleLine = true, colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color(0xFF4CAF50), unfocusedBorderColor = Color.White.copy(alpha = 0.3f), focusedTextColor = Color.White, unfocusedTextColor = Color.White))
-                Spacer(Modifier.height(8.dp))
-                OutlinedTextField(value = newSiteUrl, onValueChange = { newSiteUrl = it }, label = { Text("URL", color = Color.White.copy(alpha = 0.5f), fontSize = 11.sp) }, modifier = Modifier.fillMaxWidth(), singleLine = true, colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color(0xFF4CAF50), unfocusedBorderColor = Color.White.copy(alpha = 0.3f), focusedTextColor = Color.White, unfocusedTextColor = Color.White))
-            }},
-            confirmButton = { TextButton(onClick = {
-                if (newSiteName.isNotBlank() && newSiteUrl.isNotBlank()) {
-                    val newSite = newSiteName.trim() to newSiteUrl.trim()
-                    if (customSites.none { it.first == newSite.first }) { customSites = customSites + newSite; NetworkChecker.saveSites(context, customSites); Toast.makeText(context, "сайт добавлен", Toast.LENGTH_SHORT).show(); newSiteName = ""; newSiteUrl = ""; showAddSiteDialog = false }
-                    else Toast.makeText(context, "такой сайт уже есть", Toast.LENGTH_SHORT).show()
-                }
-            }) { Text("добавить", color = Color(0xFF4CAF50), fontSize = 12.sp) } },
-            dismissButton = { TextButton(onClick = { showAddSiteDialog = false; newSiteName = ""; newSiteUrl = "" }) { Text("отмена", color = Color.White, fontSize = 12.sp) } },
-            containerColor = Color(0xFF1A1A1A), shape = RoundedCornerShape(16.dp))
+        AlertDialog(onDismissRequest = { showAddSiteDialog = false }, title = { Text("добавить сайт", color = Color.White, fontSize = 14.sp) }, text = { Column {
+            OutlinedTextField(value = newSiteName, onValueChange = { newSiteName = it }, label = { Text("название", color = Color.White.copy(alpha = 0.5f), fontSize = 11.sp) }, modifier = Modifier.fillMaxWidth(), singleLine = true, colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color(0xFF4CAF50), unfocusedBorderColor = Color.White.copy(alpha = 0.3f), focusedTextColor = Color.White, unfocusedTextColor = Color.White))
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(value = newSiteUrl, onValueChange = { newSiteUrl = it }, label = { Text("URL", color = Color.White.copy(alpha = 0.5f), fontSize = 11.sp) }, modifier = Modifier.fillMaxWidth(), singleLine = true, colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color(0xFF4CAF50), unfocusedBorderColor = Color.White.copy(alpha = 0.3f), focusedTextColor = Color.White, unfocusedTextColor = Color.White))
+        }}, confirmButton = { TextButton(onClick = {
+            if (newSiteName.isNotBlank() && newSiteUrl.isNotBlank()) {
+                val newSite = newSiteName.trim() to newSiteUrl.trim()
+                if (customSites.none { it.first == newSite.first }) { customSites = customSites + newSite; NetworkChecker.saveSites(context, customSites); Toast.makeText(context, "сайт добавлен", Toast.LENGTH_SHORT).show(); newSiteName = ""; newSiteUrl = ""; showAddSiteDialog = false }
+                else Toast.makeText(context, "такой сайт уже есть", Toast.LENGTH_SHORT).show()
+            }
+        }) { Text("добавить", color = Color(0xFF4CAF50), fontSize = 12.sp) } }, dismissButton = { TextButton(onClick = { showAddSiteDialog = false; newSiteName = ""; newSiteUrl = "" }) { Text("отмена", color = Color.White, fontSize = 12.sp) } }, containerColor = Color(0xFF1A1A1A), shape = RoundedCornerShape(16.dp))
     }
 }
 
 // =============================================
-// INFO SCREEN (ОРАНЖЕВЫЙ)
+// INFO SCREEN
 // =============================================
 @Composable
 fun InfoScreen() {
@@ -1175,12 +716,11 @@ fun InfoScreen() {
                 }
             }
         }
-
         Spacer(Modifier.height(16.dp))
 
         Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFF1A1A1A)), shape = RoundedCornerShape(16.dp)) {
             Column(modifier = Modifier.padding(20.dp)) {
-                Text("как использовать?", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Text("как использовать", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color.White)
                 Spacer(Modifier.height(12.dp))
                 listOf("отключите Wi-Fi и VPN", "нажмите кнопку \"проверить\"", "дождитесь результатов", "просматривайте историю проверок").forEachIndexed { index, step ->
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
